@@ -1,0 +1,24 @@
+{
+  "name": "echelon_05",
+  "version": "1.0.0",
+  "description": "Unreal Engine 5.7 project build and launch scripts",
+  "scripts": {
+    "build": "node scripts/build.js Editor Win64 Development",
+    "build-game": "node scripts/build.js Game Win64 Development",
+    "build-editor": "node scripts/build.js Editor Win64 Development",
+    "build-editor-debug": "node scripts/build.js Editor Win64 DebugGame",
+    "build-editor-shipping": "node scripts/build.js Editor Win64 Shipping",
+    "launch": "node scripts/launch.js",
+    "dev": "npm run build && npm run launch",
+    "clean": "node scripts/clean.js",
+    "clean-logs": "node scripts/clean-logs.js",
+    "clean-all": "npm run clean && npm run clean-logs",
+    "rebuild": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "unreal-engine",
+    "ue5"
+  ],
+  "author": "",
+  "license": "ISC"
+}
