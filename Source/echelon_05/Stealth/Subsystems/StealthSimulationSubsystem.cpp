@@ -447,11 +447,19 @@ void UStealthSimulationSubsystem::RefreshPPVIndirectScale()
 		return;
 	}
 
-	// Walk unbounded PostProcessVolumes looking for an IndirectLightingIntensity override.
-	// The first one found wins (highest-priority unbounded PPV sets the contract).
-	// When a PPV suppresses Lumen GI (IndirectLightingIntensity == 0), the ambient floor
-	// in the stealth sim must also reach zero — otherwise the guard perceives ambient fill
-	// that the renderer is not showing the player.
+	struct FIndirectPPVBlend
+	{
+		float Priority = 0.f;
+		float BlendWeight = 0.f;
+		float IndirectLightingIntensity = 1.f;
+		FString StableName;
+	};
+
+	TArray<FIndirectPPVBlend> Blends;
+
+	// Walk unbounded PostProcessVolumes that affect indirect lighting, then apply them in
+	// priority order. This keeps stealth ambient in step with post-process blending instead
+	// of depending on TActorIterator order.
 	for (TActorIterator<APostProcessVolume> It(World); It; ++It)
 	{
 		const APostProcessVolume* PPV = *It;
@@ -462,12 +470,37 @@ void UStealthSimulationSubsystem::RefreshPPVIndirectScale()
 
 		if (PPV->Settings.bOverride_IndirectLightingIntensity)
 		{
-			CachedPPVIndirectScale = FMath::Clamp(PPV->Settings.IndirectLightingIntensity, 0.f, 1.f);
-			return;
+			const float BlendWeight = FMath::Clamp(PPV->BlendWeight, 0.f, 1.f);
+			if (BlendWeight <= UE_KINDA_SMALL_NUMBER)
+			{
+				continue;
+			}
+
+			FIndirectPPVBlend& Blend = Blends.AddDefaulted_GetRef();
+			Blend.Priority = PPV->Priority;
+			Blend.BlendWeight = BlendWeight;
+			Blend.IndirectLightingIntensity = FMath::Clamp(PPV->Settings.IndirectLightingIntensity, 0.f, 1.f);
+			Blend.StableName = PPV->GetName();
 		}
 	}
 
-	CachedPPVIndirectScale = 1.f;
+	Blends.Sort([](const FIndirectPPVBlend& A, const FIndirectPPVBlend& B)
+	{
+		if (!FMath::IsNearlyEqual(A.Priority, B.Priority))
+		{
+			return A.Priority < B.Priority;
+		}
+
+		return A.StableName < B.StableName;
+	});
+
+	float Scale = 1.f;
+	for (const FIndirectPPVBlend& Blend : Blends)
+	{
+		Scale = FMath::Lerp(Scale, Blend.IndirectLightingIntensity, Blend.BlendWeight);
+	}
+
+	CachedPPVIndirectScale = Scale;
 }
 
 float UStealthSimulationSubsystem::ComputeSceneLightExposureAt(const FVector& SampleWorldPosition,
@@ -559,6 +592,67 @@ float UStealthSimulationSubsystem::SampleLightExposureAt(const FVector& WorldLoc
 
 	RefreshSceneLightCache(GetWorld()->GetTimeSeconds());
 	return ComputeSceneLightExposureAt(WorldLocation, OcclusionIgnoreActor, nullptr);
+}
+
+float UStealthSimulationSubsystem::SampleBodyLightExposureRaw(const TArray<FVector>& BodyWorldPositions,
+	const TArray<FString>& BodyLabels, const AActor* OcclusionIgnoreActor, FStealthLightSamplingDebug* OutDebug)
+{
+	FStealthLightSamplingDebug Debug;
+	Debug.BodySamples.Reserve(BodyWorldPositions.Num());
+
+	if (!GetWorld() || !TuningAsset)
+	{
+		if (OutDebug)
+		{
+			*OutDebug = Debug;
+		}
+		return 0.f;
+	}
+
+	RefreshSceneLightCache(GetWorld()->GetTimeSeconds());
+	Debug.CachedLightCount = CachedSceneLights.Num();
+
+	if (BodyWorldPositions.Num() == 0)
+	{
+		if (OutDebug)
+		{
+			*OutDebug = Debug;
+		}
+		return 0.f;
+	}
+
+	float MaxExp = 0.f;
+	float MeanAccum = 0.f;
+
+	for (int32 i = 0; i < BodyWorldPositions.Num(); ++i)
+	{
+		FStealthBodyLightSampleDebug Pt;
+		Pt.SampleName = BodyLabels.IsValidIndex(i) ? BodyLabels[i] : FString::Printf(TEXT("Sample_%d"), i);
+		Pt.WorldPosition = BodyWorldPositions[i];
+
+		TArray<FStealthLightContributionDebug> Contribs;
+		Pt.Exposure = ComputeSceneLightExposureAt(Pt.WorldPosition, OcclusionIgnoreActor, &Contribs);
+		Pt.Contributions = MoveTemp(Contribs);
+
+		Debug.BodySamples.Add(Pt);
+		MaxExp = FMath::Max(MaxExp, Pt.Exposure);
+		MeanAccum += Pt.Exposure;
+	}
+
+	const float MeanExp = MeanAccum / static_cast<float>(BodyWorldPositions.Num());
+	const float BlendAlpha = FMath::Clamp(TuningAsset->SceneLightMaxBiasBlend, 0.f, 1.f);
+	const float RawCombined = FMath::Lerp(MeanExp, MaxExp, BlendAlpha);
+
+	Debug.RawMaxExposure = MaxExp;
+	Debug.SmoothedExposure = RawCombined;
+	Debug.FinalExposure = RawCombined;
+
+	if (OutDebug)
+	{
+		*OutDebug = Debug;
+	}
+
+	return RawCombined;
 }
 
 float UStealthSimulationSubsystem::SampleBodyLightExposureMaxBias(const TArray<FVector>& BodyWorldPositions,

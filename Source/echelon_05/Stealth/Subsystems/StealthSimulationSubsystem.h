@@ -150,6 +150,10 @@ public:
 	float SampleBodyLightExposureMaxBias(const TArray<FVector>& BodyWorldPositions, const TArray<FString>& BodyLabels,
 		const AActor* OcclusionIgnoreActor, float DeltaTime);
 
+	/** Sample body points without mutating player smoothing or HUD debug state. Intended for automated level probes. */
+	float SampleBodyLightExposureRaw(const TArray<FVector>& BodyWorldPositions, const TArray<FString>& BodyLabels,
+		const AActor* OcclusionIgnoreActor, FStealthLightSamplingDebug* OutDebug = nullptr);
+
 	UFUNCTION(BlueprintPure, Category = "Stealth")
 	FStealthLightSamplingDebug GetLastLightSamplingDebug() const { return LastLightSamplingDebug; }
 
@@ -171,10 +175,10 @@ private:
 		TArray<FStealthLightContributionDebug>* OutSortedContributions) const;
 
 	/**
-	 * Scans active unbounded PostProcessVolumes for an IndirectLightingIntensity override and
-	 * caches the result as a 0–1 scale.  Called inside RefreshSceneLightCache so it stays in
-	 * sync with the light cache refresh cadence.  When a PPV suppresses Lumen GI (value 0),
-	 * SceneLightAmbientExposure is driven to zero, matching what the renderer actually shows.
+	 * Scans active unbounded PostProcessVolumes for IndirectLightingIntensity overrides and
+	 * caches the priority/blend-resolved result as a 0-1 scale. Called inside RefreshSceneLightCache
+	 * so it stays in sync with the light cache refresh cadence. When a PPV suppresses Lumen GI
+	 * (value 0), SceneLightAmbientExposure is driven to zero, matching what the renderer shows.
 	 */
 	void RefreshPPVIndirectScale();
 
