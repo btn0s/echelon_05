@@ -22,6 +22,7 @@ scripts/                        Node helpers for build, launch, and cleanup
 - `AGENTS.md` for workspace rules and ALS scope.
 - `Docs/demo/STEALTH_DEV_DEMO_GAMEPLAY.md` for the gameplay target.
 - `Docs/demo/STEALTH_ALS_PROTOTYPE_IMPL.md` for the implementation guide.
+- `Docs/Implementation/TH513_AGENT_RUNBOOK.md` for the junior-agent handoff/runbook.
 - `Docs/Implementation/STEALTH_ALS_PROTOTYPE_TASKS.md` for the TH-513 execution guide.
 - `Docs/Implementation/UE_MCP_READINESS.md` for UE-MCP Blueprint authoring notes.
 - `Plugins/ALS-Refactored/SYSTEM_MAP.md` for validated ALS plugin anchors.
