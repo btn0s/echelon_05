@@ -2,13 +2,36 @@
 
 #include "Stealth/Interfaces/StealthInteractable.h"
 
+#include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "Engine/World.h"
+#include "InputAction.h"
+#include "InputActionValue.h"
+#include "InputMappingContext.h"
 
 UStealthInteractorComponent::UStealthInteractorComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = true;
+}
+
+void UStealthInteractorComponent::BeginPlay()
+{
+	Super::BeginPlay();
+	AddInputMappingContext();
+	TryBindInput();
+}
+
+void UStealthInteractorComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	if (!bInputBound)
+	{
+		TryBindInput();
+	}
 }
 
 bool UStealthInteractorComponent::TryInteract()
@@ -30,7 +53,8 @@ bool UStealthInteractorComponent::TryInteract()
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(StealthInteract), false, Pawn);
 	Params.AddIgnoredActor(Pawn);
 
-	if (!GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params))
+	if (!GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity, ECC_Visibility,
+		FCollisionShape::MakeSphere(TraceRadius), Params))
 	{
 		return false;
 	}
@@ -49,4 +73,47 @@ bool UStealthInteractorComponent::TryInteract()
 	}
 
 	return false;
+}
+
+void UStealthInteractorComponent::AddInputMappingContext() const
+{
+	const APawn* Pawn = Cast<APawn>(GetOwner());
+	const APlayerController* PlayerController = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
+	const ULocalPlayer* LocalPlayer = PlayerController ? PlayerController->GetLocalPlayer() : nullptr;
+	if (!UseMappingContext || !LocalPlayer)
+	{
+		return;
+	}
+
+	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
+	{
+		Subsystem->AddMappingContext(UseMappingContext, UseMappingPriority);
+	}
+}
+
+void UStealthInteractorComponent::TryBindInput()
+{
+	if (bInputBound || !UseAction)
+	{
+		return;
+	}
+
+	const APawn* Pawn = Cast<APawn>(GetOwner());
+	if (!Pawn || !Pawn->InputComponent)
+	{
+		return;
+	}
+
+	if (UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(Pawn->InputComponent))
+	{
+		EnhancedInput->BindAction(UseAction, ETriggerEvent::Triggered, this, &UStealthInteractorComponent::HandleUseAction);
+		bInputBound = true;
+		SetComponentTickEnabled(false);
+	}
+}
+
+void UStealthInteractorComponent::HandleUseAction(const FInputActionValue& Value)
+{
+	(void)Value;
+	TryInteract();
 }

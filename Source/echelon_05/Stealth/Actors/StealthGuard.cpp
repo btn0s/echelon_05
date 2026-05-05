@@ -135,6 +135,11 @@ void AStealthGuard::UpdatePerceptionAndSuspicion(float DeltaTime, APawn* PlayerP
 			{
 				Suspicion.LastKnownPosition = BestPos;
 			}
+			else if (PlayerPawn)
+			{
+				Suspicion.LastKnownPosition = PlayerPawn->GetActorLocation();
+				Suspicion.LastReason = TEXT("Heard movement noise");
+			}
 		}
 
 		if (bSeePlayer)

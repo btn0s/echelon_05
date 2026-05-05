@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CoreMinimal.h"
 #include "Stealth/Types/StealthEnums.h"
 
 #include "GameplayTagContainer.h"

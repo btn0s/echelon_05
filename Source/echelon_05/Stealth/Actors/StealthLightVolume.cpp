@@ -46,5 +46,7 @@ bool AStealthLightVolume::EncompassesPoint(const FVector& WorldPoint) const
 		return false;
 	}
 	const FVector Local = Bounds->GetComponentTransform().InverseTransformPosition(WorldPoint);
-	return Bounds->Bounds.GetBox().IsInside(Local);
+	return FMath::Abs(Local.X) <= Bounds->GetUnscaledBoxExtent().X
+		&& FMath::Abs(Local.Y) <= Bounds->GetUnscaledBoxExtent().Y
+		&& FMath::Abs(Local.Z) <= Bounds->GetUnscaledBoxExtent().Z;
 }

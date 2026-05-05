@@ -20,7 +20,7 @@ void UStealthAlsAdapterComponent::BeginPlay()
 
 	if (AActor* Owner = GetOwner())
 	{
-		Owner->AddTickPrerequisiteActor(Owner);
+		AddTickPrerequisiteActor(Owner);
 	}
 }
 

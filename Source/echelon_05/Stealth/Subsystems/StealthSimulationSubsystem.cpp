@@ -156,7 +156,7 @@ float UStealthSimulationSubsystem::SampleLightExposureAt(const FVector& WorldLoc
 	float DefaultExp = TuningAsset ? TuningAsset->DefaultLightExposureOutsideVolumes : 0.85f;
 
 	bool bInsideAny = false;
-	float Exposure = DefaultExp;
+	float Exposure = 0.f;
 	for (const TWeakObjectPtr<AStealthLightVolume>& Ptr : LightVolumes)
 	{
 		if (const AStealthLightVolume* Vol = Ptr.Get())
@@ -164,7 +164,7 @@ float UStealthSimulationSubsystem::SampleLightExposureAt(const FVector& WorldLoc
 			if (Vol->EncompassesPoint(WorldLocation))
 			{
 				bInsideAny = true;
-				Exposure = FMath::Min(Exposure, Vol->GetLightExposure());
+				Exposure = FMath::Max(Exposure, Vol->GetLightExposure());
 			}
 		}
 	}
