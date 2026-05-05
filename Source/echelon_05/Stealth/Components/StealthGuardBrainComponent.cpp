@@ -187,7 +187,7 @@ void UStealthGuardBrainComponent::UpdatePerceptionAndSuspicion(float DeltaTime, 
 	else
 	{
 		const float Decay = Tuning ? Tuning->SuspicionDecayPerSecond : 8.f;
-		const float Grace = 0.35f;
+		const float Grace = StimulusAttentionHoldSeconds;
 		if (Now - Suspicion.LastStimulusTime > Grace)
 		{
 			Suspicion.Value = FMath::Max(0.f, Suspicion.Value - Decay * DeltaTime);
@@ -249,6 +249,13 @@ void UStealthGuardBrainComponent::UpdateBrainMode(UStealthSimulationSubsystem* S
 	if (bCombatLocked)
 	{
 		Brain.Mode = EGuardBrainMode::Chase;
+		return;
+	}
+
+	if (GetWorld() && GetWorld()->GetTimeSeconds() - Suspicion.LastStimulusTime <= StimulusAttentionHoldSeconds &&
+		Suspicion.State == EGuardSuspicionState::Unaware && !Suspicion.LastKnownPosition.IsNearlyZero())
+	{
+		Brain.Mode = EGuardBrainMode::Pause;
 		return;
 	}
 

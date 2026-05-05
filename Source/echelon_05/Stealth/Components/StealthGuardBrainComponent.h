@@ -69,6 +69,7 @@ protected:
 	float CombatMinimumDistance = 450.f;
 	float CombatPreferredDistance = 650.f;
 	float CombatMaximumDistance = 900.f;
+	float StimulusAttentionHoldSeconds = 1.5f;
 	float LastMoveRequestTime = 0.f;
 	float MoveRequestMinInterval = 0.35f;
 };
