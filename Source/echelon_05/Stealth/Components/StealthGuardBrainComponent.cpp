@@ -162,6 +162,8 @@ void UStealthGuardBrainComponent::UpdatePerceptionAndSuspicion(float DeltaTime, 
 
 		if (bHear && !bSeePlayer)
 		{
+			const float CuriousTh = Tuning ? Tuning->SuspicionCurious : 20.f;
+			const float SuspiciousTh = Tuning ? Tuning->SuspicionSuspicious : 45.f;
 			const float SoundThreshold = Tuning ? Tuning->LoudSoundSuspicionThreshold : 0.7f;
 			const float SoundAlpha = FMath::Clamp((AudioStrength - SoundThreshold) /
 				FMath::Max(1.f - SoundThreshold, KINDA_SMALL_NUMBER), 0.f, 1.f);
@@ -170,6 +172,11 @@ void UStealthGuardBrainComponent::UpdatePerceptionAndSuspicion(float DeltaTime, 
 			const float Stim = AudioStrength * SoundMultiplier *
 				(Tuning ? Tuning->AudioStimulusPerSecond : 25.f) * DeltaTime;
 			Suspicion.Value = FMath::Clamp(Suspicion.Value + Stim, 0.f, 100.f);
+			Suspicion.Value = FMath::Max(Suspicion.Value, CuriousTh);
+			if (AudioStrength >= SoundThreshold)
+			{
+				Suspicion.Value = FMath::Max(Suspicion.Value, SuspiciousTh);
+			}
 			if (Suspicion.LastReason.IsEmpty())
 			{
 				Suspicion.LastReason = FString::Printf(TEXT("Heard noise (strength=%.2f x%.1f)"), AudioStrength,
@@ -488,28 +495,12 @@ bool UStealthGuardBrainComponent::ComputeAuditoryStimulus(const UStealthSimulati
 	for (const FStealthSoundEvent& Ev : Sim->GetActiveSoundEvents())
 	{
 		const float Dist = FVector::Dist(GetOwner()->GetActorLocation(), Ev.Position);
-		const float HearDist = Ev.Loudness * Ev.Radius * Sensor.Acuity;
+		const float HearDist = Ev.Radius * Sensor.Acuity;
 		if (Dist <= HearDist && Dist <= Sensor.HearingRange)
 		{
 			bAny = true;
-			OutStrength = FMath::Max(OutStrength, FMath::Clamp(1.f - Dist / FMath::Max(1.f, HearDist), 0.f, 1.f));
-		}
-	}
-
-	const float PlayerNoise = Sim->GetPlayerSoundEmission().Radius;
-	if (PlayerNoise > 0.f)
-	{
-		const APawn* Player =
-			GetWorld()->GetFirstPlayerController() ? GetWorld()->GetFirstPlayerController()->GetPawn() : nullptr;
-		if (Player)
-		{
-			const float Dist = FVector::Dist(GetOwner()->GetActorLocation(), Player->GetActorLocation());
-			if (Dist <= PlayerNoise && Dist <= Sensor.HearingRange)
-			{
-				bAny = true;
-				const float N = FMath::Clamp(1.f - Dist / PlayerNoise, 0.f, 1.f);
-				OutStrength = FMath::Max(OutStrength, N * 0.65f);
-			}
+			const float Attenuation = FMath::Clamp(1.f - Dist / FMath::Max(1.f, HearDist), 0.f, 1.f);
+			OutStrength = FMath::Max(OutStrength, Attenuation * FMath::Clamp(Ev.Loudness, 0.f, 1.f));
 		}
 	}
 

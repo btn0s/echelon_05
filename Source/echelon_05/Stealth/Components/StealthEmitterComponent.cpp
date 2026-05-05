@@ -110,6 +110,25 @@ void UStealthEmitterComponent::UpdateEmissions(float DeltaTime)
 	Sound.CurrentNoise = NoiseRadius;
 	Sound.Radius = NoiseRadius;
 
+	const bool bLandedThisFrame = bHasBodySample && bWasAirborne && Body.bGrounded;
+	if (bLandedThisFrame)
+	{
+		const float LandingRadius = FMath::Max(Tuning->RunNoiseRadius, NoiseRadius) * 0.75f;
+
+		FStealthSoundEvent LandingEvent;
+		LandingEvent.Position = SampleLocation;
+		LandingEvent.Loudness = FMath::Clamp(LandingRadius / FMath::Max(1.f, Tuning->SprintNoiseRadius), 0.8f, 1.f);
+		LandingEvent.Radius = LandingRadius;
+		LandingEvent.Surface = EStealthSurface::Unknown;
+		LandingEvent.SourceType = EStealthSoundSource::Footstep;
+		LandingEvent.Lifetime = Tuning->FootstepEventLifetime;
+		LandingEvent.DebugLabel = TEXT("Landing");
+
+		const int32 Id = Sim->PushSoundEvent(LandingEvent);
+		Sound.LastDiscreteSoundTime = World->GetTimeSeconds();
+		(void)Id;
+	}
+
 	if (!bHasLastFootstepSample)
 	{
 		LastFootstepSampleLocation = SampleLocation;
@@ -143,6 +162,9 @@ void UStealthEmitterComponent::UpdateEmissions(float DeltaTime)
 			(void)Id;
 		}
 	}
+
+	bHasBodySample = true;
+	bWasAirborne = Body.bAirborne;
 
 	Sim->SetPlayerVisibilityEmission(Vis);
 	Sim->SetPlayerSoundEmission(Sound);

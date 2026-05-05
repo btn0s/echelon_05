@@ -24,4 +24,6 @@ protected:
 	float PreviousFootstepDistance = 0.f;
 	FVector LastFootstepSampleLocation = FVector::ZeroVector;
 	bool bHasLastFootstepSample = false;
+	bool bHasBodySample = false;
+	bool bWasAirborne = false;
 };
