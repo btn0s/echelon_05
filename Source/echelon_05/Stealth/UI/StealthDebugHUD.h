@@ -5,16 +5,22 @@
 
 #include "StealthDebugHUD.generated.h"
 
+class UStealthHUDWidget;
+
+/**
+ * Minimal HUD class.  All rendering is delegated to UStealthHUDWidget
+ * so the drawing pipeline goes through Slate (proper font rendering)
+ * rather than the AHUD canvas DrawText path.
+ */
 UCLASS()
 class AStealthDebugHUD : public AHUD
 {
 	GENERATED_BODY()
 
 public:
-	virtual void DrawHUD() override;
+	virtual void BeginPlay() override;
 
 private:
-	// Session high-water marks for VIS / NSE peak ticks on bars.
-	float PeakVis01   = 0.f;
-	float PeakNoise01 = 0.f;
+	UPROPERTY()
+	TObjectPtr<UStealthHUDWidget> HUDWidget;
 };

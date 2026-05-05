@@ -16,6 +16,7 @@ public:
 	AStealthDemoGameMode();
 
 	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
+	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stealth")
 	TObjectPtr<UStealthTuningDataAsset> TuningAsset;
