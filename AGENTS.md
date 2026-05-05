@@ -146,4 +146,13 @@ Stop and report instead of guessing if:
 
 - For TH-505 / ALS locomotion documentation, keep scope limited to `Plugins/ALS-Refactored` unless the user explicitly expands it.
 - For TH-513, keep Linear as one implementation issue; use repo docs as execution phases, not Linear subtasks.
+- For UE-MCP Blueprint readiness work, structural create/compile/place smoke tests are not enough; include visible runtime behavior that exercises graph wiring and variables.
+- For stealth prototype work, prioritize in-editor legibility and observable feedback: route markers, guard bodies, patrol points, debug HUD, and debug draw should be visible enough to validate without opening assets.
+
+## Learned Workspace Facts
+
+- `/Game/Stealth` is the canonical TH-513 content root; `/Game/_Dev/StealthDemo` has been migrated away, and disposable MCP smoke examples should use `/Game/MCP_Smoke`.
+- ALS-backed stealth guard work should mirror the ALSExtras pawn/controller split project-side while keeping stealth BT/BB semantics project-owned; `BT_Als` behavior is only a sample pattern.
+- ALS-backed stealth guards need valid ALS `Settings` and `MovementSettings` such as `CS_Als_Default` and `MS_Als_Normal`; missing settings make ALS skip input refresh and can look like shuffling in place.
+- UE-MCP `level(save)` and `asset(move_folder)` have been unreliable in this workspace; verify with readback/disk state and use editor save APIs or per-asset moves/duplicates when native success contradicts results.
 

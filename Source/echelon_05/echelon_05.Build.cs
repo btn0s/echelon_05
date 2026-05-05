@@ -13,7 +13,7 @@ public class echelon_05 : ModuleRules
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
 			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput",
-			"GameplayTags", "AIModule", "NavigationSystem", "UMG", "ALS"
+			"GameplayTags", "AIModule", "NavigationSystem", "UMG", "ALS", "ALSExtras"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

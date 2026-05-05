@@ -9,7 +9,7 @@
 #include "StealthSimulationSubsystem.generated.h"
 
 class AStealthLightVolume;
-class AStealthGuard;
+class UStealthGuardBrainComponent;
 class UStealthTuningDataAsset;
 
 USTRUCT(BlueprintType)
@@ -86,10 +86,10 @@ public:
 	void UnregisterLightVolume(AStealthLightVolume* Volume);
 
 	UFUNCTION(BlueprintCallable, Category = "Stealth")
-	void RegisterGuard(AStealthGuard* Guard);
+	void RegisterGuardBrain(UStealthGuardBrainComponent* Brain);
 
 	UFUNCTION(BlueprintCallable, Category = "Stealth")
-	void UnregisterGuard(AStealthGuard* Guard);
+	void UnregisterGuardBrain(UStealthGuardBrainComponent* Brain);
 
 	UFUNCTION(BlueprintPure, Category = "Stealth")
 	FStealthMovementState GetPlayerMovement() const { return PlayerMovement; }
@@ -145,7 +145,7 @@ public:
 	float SampleLightExposureAt(const FVector& WorldLocation) const;
 	TArray<TWeakObjectPtr<AStealthLightVolume>> GetRegisteredLightVolumes() const { return LightVolumes; }
 
-	TArray<TWeakObjectPtr<AStealthGuard>> GetRegisteredGuards() const { return Guards; }
+	TArray<TWeakObjectPtr<UStealthGuardBrainComponent>> GetRegisteredGuardBrains() const { return GuardBrains; }
 
 	UPROPERTY(BlueprintAssignable, Category = "Stealth")
 	FOnStealthPlayerSnapshotUpdated OnPlayerSnapshotUpdated;
@@ -171,7 +171,7 @@ private:
 	int32 NextSoundEventId = 1;
 
 	TArray<TWeakObjectPtr<AStealthLightVolume>> LightVolumes;
-	TArray<TWeakObjectPtr<AStealthGuard>> Guards;
+	TArray<TWeakObjectPtr<UStealthGuardBrainComponent>> GuardBrains;
 
 	FObjectiveState ObjectiveState;
 	FExtractionState ExtractionState;

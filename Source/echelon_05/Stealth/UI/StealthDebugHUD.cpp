@@ -1,8 +1,8 @@
 #include "Stealth/UI/StealthDebugHUD.h"
 
-#include "Stealth/Actors/StealthGuard.h"
+#include "Stealth/Actors/StealthAlsGuard.h"
+#include "Stealth/Components/StealthGuardBrainComponent.h"
 #include "Stealth/Subsystems/StealthSimulationSubsystem.h"
-
 #include "HAL/IConsoleManager.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -69,26 +69,34 @@ void AStealthDebugHUD::DrawHUD()
 		LineR(FString::Printf(TEXT("  [%d] %s r=%.0f"), Events[i].EventId, *Events[i].DebugLabel, Events[i].Radius));
 	}
 
-	AStealthGuard* PrimaryGuard = nullptr;
-	for (const TWeakObjectPtr<AStealthGuard>& G : Sim->GetRegisteredGuards())
+	LineR(TEXT("--- Guards ---"), FLinearColor::Yellow);
+	const TArray<TWeakObjectPtr<UStealthGuardBrainComponent>> Brains = Sim->GetRegisteredGuardBrains();
+	if (Brains.Num() == 0)
 	{
-		if (G.IsValid())
-		{
-			PrimaryGuard = G.Get();
-			break;
-		}
-	}
-	LineR(TEXT("--- Guard ---"), FLinearColor::Yellow);
-	if (PrimaryGuard)
-	{
-		LineR(PrimaryGuard->GetDebugBrainLine());
+		LineR(TEXT("(none)"));
 	}
 	else
 	{
-		LineR(TEXT("Guard: --"));
-	}
-
-	LineR(FString::Printf(TEXT("Alarm: %s Lvl %.0f %s"), Sim->GetAlarmState().bActive ? TEXT("ON") : TEXT("off"),
+		int32 GuardIdx = 0;
+		for (const TWeakObjectPtr<UStealthGuardBrainComponent>& BPtr : Brains)
+		{
+			if (!BPtr.IsValid())
+			{
+				continue;
+			}
+			UStealthGuardBrainComponent* Brain = BPtr.Get();
+			const AActor* OwnerActor = Brain->GetOwner();
+			const FString Label = OwnerActor ? OwnerActor->GetActorLabel() : FString(TEXT("(no owner)"));
+			LineR(FString::Printf(TEXT("[%d] %s"), GuardIdx++, *Label));
+			LineR(Brain->GetDebugBrainLine());
+			if (const AStealthAlsGuard* AlsGuard = Cast<AStealthAlsGuard>(OwnerActor))
+			{
+				LineR(FString::Printf(TEXT("ALS desiredGait=%s gait=%s desiredRot=%s"),
+					*AlsGuard->GetDesiredGait().ToString(), *AlsGuard->GetGait().ToString(),
+					*AlsGuard->GetDesiredRotationMode().ToString()));
+			}
+		}
+	}	LineR(FString::Printf(TEXT("Alarm: %s Lvl %.0f %s"), Sim->GetAlarmState().bActive ? TEXT("ON") : TEXT("off"),
 		Sim->GetAlarmState().Level, *Sim->GetAlarmState().Reason));
 
 	const FObjectiveState Obj = Sim->GetObjectiveState();

@@ -5,8 +5,27 @@ AStealthPatrolRouteActor::AStealthPatrolRouteActor()
 	PrimaryActorTick.bCanEverTick = false;
 }
 
+void AStealthPatrolRouteActor::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	if (LocalPatrolPointTransforms.Num() == 0 && LocalPatrolOffsets.Num() > 0)
+	{
+		LocalPatrolPointTransforms.Reserve(LocalPatrolOffsets.Num());
+		for (const FVector& Offset : LocalPatrolOffsets)
+		{
+			LocalPatrolPointTransforms.Emplace(FRotator::ZeroRotator, Offset, FVector::OneVector);
+		}
+	}
+}
+
 FVector AStealthPatrolRouteActor::GetWorldPatrolPoint(int32 Index) const
 {
+	if (LocalPatrolPointTransforms.IsValidIndex(Index))
+	{
+		return GetActorTransform().TransformPosition(LocalPatrolPointTransforms[Index].GetLocation());
+	}
+
 	if (!LocalPatrolOffsets.IsValidIndex(Index))
 	{
 		return GetActorLocation();

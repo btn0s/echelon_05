@@ -1,7 +1,7 @@
 #include "Stealth/Subsystems/StealthSimulationSubsystem.h"
 
 #include "Stealth/Actors/StealthLightVolume.h"
-#include "Stealth/Actors/StealthGuard.h"
+#include "Stealth/Components/StealthGuardBrainComponent.h"
 #include "Stealth/Data/StealthTuningDataAsset.h"
 #include "Stealth/StealthLog.h"
 
@@ -21,7 +21,7 @@ void UStealthSimulationSubsystem::Initialize(FSubsystemCollectionBase& Collectio
 void UStealthSimulationSubsystem::Deinitialize()
 {
 	LightVolumes.Reset();
-	Guards.Reset();
+	GuardBrains.Reset();
 	ActiveSoundEvents.Reset();
 	Super::Deinitialize();
 }
@@ -112,17 +112,17 @@ void UStealthSimulationSubsystem::UnregisterLightVolume(AStealthLightVolume* Vol
 	LightVolumes.Remove(Volume);
 }
 
-void UStealthSimulationSubsystem::RegisterGuard(AStealthGuard* Guard)
+void UStealthSimulationSubsystem::RegisterGuardBrain(UStealthGuardBrainComponent* Brain)
 {
-	if (Guard)
+	if (Brain)
 	{
-		Guards.AddUnique(Guard);
+		GuardBrains.AddUnique(Brain);
 	}
 }
 
-void UStealthSimulationSubsystem::UnregisterGuard(AStealthGuard* Guard)
+void UStealthSimulationSubsystem::UnregisterGuardBrain(UStealthGuardBrainComponent* Brain)
 {
-	Guards.Remove(Guard);
+	GuardBrains.Remove(Brain);
 }
 
 void UStealthSimulationSubsystem::SetObjectiveState(const FObjectiveState& State)
