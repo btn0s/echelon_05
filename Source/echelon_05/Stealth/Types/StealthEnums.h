@@ -65,6 +65,7 @@ UENUM(BlueprintType)
 enum class EStealthSoundSource : uint8
 {
 	Footstep UMETA(DisplayName = "Footstep"),
+	Landing UMETA(DisplayName = "Landing"),
 	Lure UMETA(DisplayName = "Lure"),
 	Door UMETA(DisplayName = "Door"),
 	Objective UMETA(DisplayName = "Objective"),

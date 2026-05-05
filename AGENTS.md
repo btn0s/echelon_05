@@ -148,6 +148,9 @@ Stop and report instead of guessing if:
 - For TH-513, keep Linear as one implementation issue; use repo docs as execution phases, not Linear subtasks.
 - For UE-MCP Blueprint readiness work, structural create/compile/place smoke tests are not enough; include visible runtime behavior that exercises graph wiring and variables.
 - For stealth prototype work, prioritize in-editor legibility and observable feedback: route markers, guard bodies, patrol points, debug HUD, and debug draw should be visible enough to validate without opening assets.
+- For UE-MCP reads of ALS Blueprints or live PIE state, serialize calls one at a time; batched reads are more likely to time out or fail.
+- For stealth guard behavior, favor Splinter Cell-style armed containment: maintain LOS and standoff, backpedal/strafe when crowded, and avoid sprinting directly into the player.
+- For stealth hearing design, keep sound reactions value-driven through suspicion/evidence math; avoid separate ad hoc pause or investigate timers that bypass suspicion state.
 
 ## Learned Workspace Facts
 
@@ -155,4 +158,7 @@ Stop and report instead of guessing if:
 - ALS-backed stealth guard work should mirror the ALSExtras pawn/controller split project-side while keeping stealth BT/BB semantics project-owned; `BT_Als` behavior is only a sample pattern.
 - ALS-backed stealth guards need valid ALS `Settings` and `MovementSettings` such as `CS_Als_Default` and `MS_Als_Normal`; missing settings make ALS skip input refresh and can look like shuffling in place.
 - UE-MCP `level(save)` and `asset(move_folder)` have been unreliable in this workspace; verify with readback/disk state and use editor save APIs or per-asset moves/duplicates when native success contradicts results.
+- `/Game/Stealth/Maps/L_StealthAls_Prototype` is moving toward a single ALS-backed guard setup; avoid keeping the legacy baseline `Stealth_Guard` alongside `Stealth_AlsGuard` unless explicitly comparing behavior.
+- Stealth patrol authoring now expects patrol points to have their own editable transforms/gizmos rather than hidden array-only offsets.
+- ALS-backed stealth guard presentation should stay rifle-ready during patrol and reserve aiming/combat movement for alert states; overlay objects and AnimBP layers should be mirrored project-side without editing `/ALS`.
 

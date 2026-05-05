@@ -87,6 +87,24 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 0))
 	float AudioStimulusPerSecond = 25.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 0, ClampMax = 100))
+	float FootstepEvidence = 8.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 0, ClampMax = 100))
+	float LandingEvidence = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 0, ClampMax = 100))
+	float LureEvidence = 60.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 0, ClampMax = 100))
+	float DoorEvidence = 35.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 0, ClampMax = 100))
+	float ObjectiveEvidence = 35.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 0, ClampMax = 100))
+	float FallbackEvidence = 20.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 1))
 	float BrightLightSuspicionMultiplier = 3.f;
 

@@ -18,6 +18,30 @@ static TAutoConsoleVariable<int32> CVarStealthGuardDebugDrawBrain(
 	TEXT("When non-zero, draws stealth debug primitives (guard cone, etc.)."),
 	ECVF_Default);
 
+static float GetSoundEvidencePoints(const UStealthTuningDataAsset* Tuning, EStealthSoundSource SourceType)
+{
+	if (!Tuning)
+	{
+		return 20.f;
+	}
+
+	switch (SourceType)
+	{
+	case EStealthSoundSource::Footstep:
+		return Tuning->FootstepEvidence;
+	case EStealthSoundSource::Landing:
+		return Tuning->LandingEvidence;
+	case EStealthSoundSource::Lure:
+		return Tuning->LureEvidence;
+	case EStealthSoundSource::Door:
+		return Tuning->DoorEvidence;
+	case EStealthSoundSource::Objective:
+		return Tuning->ObjectiveEvidence;
+	default:
+		return Tuning->FallbackEvidence;
+	}
+}
+
 UStealthGuardBrainComponent::UStealthGuardBrainComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -121,22 +145,29 @@ void UStealthGuardBrainComponent::UpdatePerceptionAndSuspicion(float DeltaTime, 
 		else if (bHear)
 		{
 			const TArray<FStealthSoundEvent> Events = Sim->GetActiveSoundEvents();
-			float BestDist = TNumericLimits<float>::Max();
+			float BestStrength = -1.f;
 			FVector BestPos = Suspicion.LastKnownPosition;
+			FString BestLabel;
 			for (const FStealthSoundEvent& Ev : Events)
 			{
 				const float D = FVector::Dist(GetOwner()->GetActorLocation(), Ev.Position);
-				const float HearDist = Ev.Loudness * Ev.Radius * Sensor.Acuity;
-				if (D <= HearDist && D < BestDist)
+				const float HearDist = Ev.Radius * Sensor.Acuity;
+				if (D <= HearDist && D <= Sensor.HearingRange)
 				{
-					BestDist = D;
-					BestPos = Ev.Position;
-					Suspicion.LastReason = FString::Printf(TEXT("Heard: %s"), *Ev.DebugLabel);
+					const float Attenuation = FMath::Clamp(1.f - D / FMath::Max(1.f, HearDist), 0.f, 1.f);
+					const float EventStrength = Attenuation * FMath::Clamp(Ev.Loudness, 0.f, 1.f);
+					if (EventStrength > BestStrength)
+					{
+						BestStrength = EventStrength;
+						BestPos = Ev.Position;
+						BestLabel = Ev.DebugLabel;
+					}
 				}
 			}
-			if (BestDist < TNumericLimits<float>::Max())
+			if (BestStrength >= 0.f)
 			{
 				Suspicion.LastKnownPosition = BestPos;
+				Suspicion.LastReason = FString::Printf(TEXT("Heard: %s"), *BestLabel);
 			}
 			else if (PlayerPawn)
 			{
@@ -165,22 +196,46 @@ void UStealthGuardBrainComponent::UpdatePerceptionAndSuspicion(float DeltaTime, 
 			const float CuriousTh = Tuning ? Tuning->SuspicionCurious : 20.f;
 			const float SuspiciousTh = Tuning ? Tuning->SuspicionSuspicious : 45.f;
 			const float SoundThreshold = Tuning ? Tuning->LoudSoundSuspicionThreshold : 0.7f;
-			const float SoundAlpha = FMath::Clamp((AudioStrength - SoundThreshold) /
-				FMath::Max(1.f - SoundThreshold, KINDA_SMALL_NUMBER), 0.f, 1.f);
-			const float SoundMultiplier = FMath::Lerp(1.f, Tuning ? Tuning->LoudSoundSuspicionMultiplier : 2.5f,
-				SoundAlpha);
-			const float Stim = AudioStrength * SoundMultiplier *
-				(Tuning ? Tuning->AudioStimulusPerSecond : 25.f) * DeltaTime;
-			Suspicion.Value = FMath::Clamp(Suspicion.Value + Stim, 0.f, 100.f);
-			Suspicion.Value = FMath::Max(Suspicion.Value, CuriousTh);
-			if (AudioStrength >= SoundThreshold)
+			float SoundStimulus = 0.f;
+			float StrongestNewSound = 0.f;
+
+			for (const FStealthSoundEvent& Ev : Sim->GetActiveSoundEvents())
 			{
-				Suspicion.Value = FMath::Max(Suspicion.Value, SuspiciousTh);
+				if (ProcessedSoundEventIds.Contains(Ev.EventId))
+				{
+					continue;
+				}
+
+				const float HearDist = Ev.Radius * Sensor.Acuity;
+				const float DistanceToSound = FVector::Dist(GetOwner()->GetActorLocation(), Ev.Position);
+				if (DistanceToSound > HearDist || DistanceToSound > Sensor.HearingRange)
+				{
+					continue;
+				}
+
+				ProcessedSoundEventIds.Add(Ev.EventId);
+				const float Attenuation = FMath::Clamp(1.f - DistanceToSound / FMath::Max(1.f, HearDist), 0.f, 1.f);
+				const float EventStrength = Attenuation * FMath::Clamp(Ev.Loudness, 0.f, 1.f);
+				const float SoundAlpha = FMath::Clamp((EventStrength - SoundThreshold) /
+					FMath::Max(1.f - SoundThreshold, KINDA_SMALL_NUMBER), 0.f, 1.f);
+				const float SoundMultiplier = FMath::Lerp(1.f, Tuning ? Tuning->LoudSoundSuspicionMultiplier : 2.5f,
+					SoundAlpha);
+				const float SourceEvidence = GetSoundEvidencePoints(Tuning, Ev.SourceType);
+
+				SoundStimulus += SourceEvidence * EventStrength * SoundMultiplier;
+				StrongestNewSound = FMath::Max(StrongestNewSound, EventStrength);
 			}
-			if (Suspicion.LastReason.IsEmpty())
+
+			if (SoundStimulus > 0.f)
 			{
-				Suspicion.LastReason = FString::Printf(TEXT("Heard noise (strength=%.2f x%.1f)"), AudioStrength,
-					SoundMultiplier);
+				Suspicion.Value = FMath::Clamp(Suspicion.Value + SoundStimulus, 0.f, 100.f);
+				Suspicion.Value = FMath::Max(Suspicion.Value, CuriousTh);
+				if (StrongestNewSound >= SoundThreshold)
+				{
+					Suspicion.Value = FMath::Max(Suspicion.Value, SuspiciousTh);
+				}
+				Suspicion.LastReason = FString::Printf(TEXT("Heard noise (strength=%.2f +%.1f)"), AudioStrength,
+					SoundStimulus);
 			}
 		}
 	}

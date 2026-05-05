@@ -120,7 +120,7 @@ void UStealthEmitterComponent::UpdateEmissions(float DeltaTime)
 		LandingEvent.Loudness = FMath::Clamp(LandingRadius / FMath::Max(1.f, Tuning->SprintNoiseRadius), 0.8f, 1.f);
 		LandingEvent.Radius = LandingRadius;
 		LandingEvent.Surface = EStealthSurface::Unknown;
-		LandingEvent.SourceType = EStealthSoundSource::Footstep;
+		LandingEvent.SourceType = EStealthSoundSource::Landing;
 		LandingEvent.Lifetime = Tuning->FootstepEventLifetime;
 		LandingEvent.DebugLabel = TEXT("Landing");
 
