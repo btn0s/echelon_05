@@ -12,6 +12,7 @@
 #include "Components/RectLightComponent.h"
 #include "Components/SkyLightComponent.h"
 #include "Components/SpotLightComponent.h"
+#include "Engine/PostProcessVolume.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 
@@ -72,6 +73,7 @@ void UStealthSimulationSubsystem::ResetSimulation()
 	LastLightSamplingDebug = FStealthLightSamplingDebug();
 	LastSceneLightCacheTime = -100000.f;
 	CachedSceneLights.Reset();
+	CachedPPVIndirectScale = 1.f;
 }
 
 void UStealthSimulationSubsystem::SetTuningAsset(UStealthTuningDataAsset* InTuning)
@@ -432,6 +434,40 @@ void UStealthSimulationSubsystem::RefreshSceneLightCache(float WorldTimeSeconds)
 			CachedSceneLights.Add(Light);
 		}
 	}
+
+	RefreshPPVIndirectScale();
+}
+
+void UStealthSimulationSubsystem::RefreshPPVIndirectScale()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		CachedPPVIndirectScale = 1.f;
+		return;
+	}
+
+	// Walk unbounded PostProcessVolumes looking for an IndirectLightingIntensity override.
+	// The first one found wins (highest-priority unbounded PPV sets the contract).
+	// When a PPV suppresses Lumen GI (IndirectLightingIntensity == 0), the ambient floor
+	// in the stealth sim must also reach zero — otherwise the guard perceives ambient fill
+	// that the renderer is not showing the player.
+	for (TActorIterator<APostProcessVolume> It(World); It; ++It)
+	{
+		const APostProcessVolume* PPV = *It;
+		if (!PPV || !PPV->bEnabled || !PPV->bUnbound)
+		{
+			continue;
+		}
+
+		if (PPV->Settings.bOverride_IndirectLightingIntensity)
+		{
+			CachedPPVIndirectScale = FMath::Clamp(PPV->Settings.IndirectLightingIntensity, 0.f, 1.f);
+			return;
+		}
+	}
+
+	CachedPPVIndirectScale = 1.f;
 }
 
 float UStealthSimulationSubsystem::ComputeSceneLightExposureAt(const FVector& SampleWorldPosition,
@@ -447,7 +483,9 @@ float UStealthSimulationSubsystem::ComputeSceneLightExposureAt(const FVector& Sa
 
 	TArray<FStealthLightContributionDebug> AllContribs;
 
-	float Sum = TuningAsset->SceneLightAmbientExposure;
+	// Ambient floor is scaled by the active PPV's IndirectLightingIntensity override so the
+	// sim's baseline tracks the renderer: if Lumen GI is suppressed to zero, the floor is zero.
+	float Sum = TuningAsset->SceneLightAmbientExposure * CachedPPVIndirectScale;
 
 	for (const TWeakObjectPtr<ULightComponentBase>& Ptr : CachedSceneLights)
 	{

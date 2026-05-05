@@ -8,89 +8,82 @@
 
 namespace
 {
-constexpr float GPanelAlpha = 0.72f;
-constexpr float GLineHeight = 17.f;
+constexpr float GLineH = 15.f;
 
-FLinearColor WithAlpha(const FLinearColor& Color, const float Alpha)
+// Splinter Cell aesthetic: near-black bg, desaturated military green, thin borders.
+FLinearColor SCBg()    { return FLinearColor(0.008f, 0.018f, 0.012f, 0.62f); }
+FLinearColor SCEdge()  { return FLinearColor(0.30f,  0.44f,  0.36f,  0.65f); }
+FLinearColor SCGreen() { return FLinearColor(0.48f,  0.74f,  0.58f,  1.f);  }
+FLinearColor SCAmber() { return FLinearColor(0.78f,  0.70f,  0.35f,  1.f);  }
+FLinearColor SCWarn()  { return FLinearColor(0.84f,  0.56f,  0.28f,  1.f);  }
+FLinearColor SCWhite() { return FLinearColor(0.88f,  0.90f,  0.86f,  1.f);  }
+FLinearColor SCDim()   { return FLinearColor(0.32f,  0.40f,  0.35f,  1.f);  }
+
+FLinearColor SCRamp(const float N)
 {
-	return FLinearColor(Color.R, Color.G, Color.B, Alpha);
+	if (N >= 0.78f) return SCWarn();
+	if (N >= 0.46f) return SCAmber();
+	return SCGreen();
 }
 
-FLinearColor DangerColor(const float Normalized)
+FLinearColor SCSuspColor(const EGuardSuspicionState S)
 {
-	if (Normalized >= 0.82f)
+	switch (S)
 	{
-		return FLinearColor(1.f, 0.12f, 0.08f, 1.f);
-	}
-	if (Normalized >= 0.55f)
-	{
-		return FLinearColor(1.f, 0.72f, 0.12f, 1.f);
-	}
-	return FLinearColor(0.12f, 0.82f, 0.92f, 1.f);
-}
-
-FLinearColor GuardStateColor(const EGuardSuspicionState State)
-{
-	switch (State)
-	{
-	case EGuardSuspicionState::Alert:
-		return FLinearColor(1.f, 0.08f, 0.05f, 1.f);
+	case EGuardSuspicionState::Alert:          return SCWarn();
 	case EGuardSuspicionState::Investigating:
-		return FLinearColor(1.f, 0.48f, 0.08f, 1.f);
-	case EGuardSuspicionState::Suspicious:
-		return FLinearColor(1.f, 0.72f, 0.12f, 1.f);
-	case EGuardSuspicionState::Curious:
-		return FLinearColor(0.62f, 0.82f, 1.f, 1.f);
-	case EGuardSuspicionState::Unaware:
-	default:
-		return FLinearColor(0.16f, 0.9f, 0.68f, 1.f);
+	case EGuardSuspicionState::Suspicious:     return SCAmber();
+	case EGuardSuspicionState::Curious:        return SCGreen();
+	default:                                    return SCDim();
 	}
 }
 
 template <typename TEnum>
-FString EnumDisplayName(const TEnum Value)
+FString SCEnumName(const TEnum V)
 {
-	if (const UEnum* Enum = StaticEnum<TEnum>())
+	if (const UEnum* E = StaticEnum<TEnum>())
 	{
-		return Enum->GetDisplayNameTextByValue(static_cast<int64>(Value)).ToString();
+		return E->GetDisplayNameTextByValue(static_cast<int64>(V)).ToString().ToUpper();
 	}
-	return FString::FromInt(static_cast<int32>(Value));
+	return FString::FromInt(static_cast<int32>(V));
 }
 
-void DrawShadowedText(AHUD& Hud, const FString& Text, const float X, const float Y, const FLinearColor& Color, UFont* Font,
-	const float Scale = 1.f)
+void SCText(AHUD& H, const FString& T, const float X, const float Y, const FLinearColor& C, UFont* F, const float S = 1.f)
 {
-	Hud.DrawText(Text, FLinearColor(0.f, 0.f, 0.f, 0.85f), X + 1.f, Y + 1.f, Font, Scale, false);
-	Hud.DrawText(Text, Color, X, Y, Font, Scale, false);
+	H.DrawText(T, FLinearColor(0.f, 0.f, 0.f, 0.55f), X + 1.f, Y + 1.f, F, S, false);
+	H.DrawText(T, C, X, Y, F, S, false);
 }
 
-void DrawPanel(AHUD& Hud, const float X, const float Y, const float W, const float H, const FLinearColor& Accent)
+// Dark panel with single-pixel border on all four sides.
+void SCPanel(AHUD& H, const float X, const float Y, const float W, const float Ht)
 {
-	Hud.DrawRect(FLinearColor(0.005f, 0.015f, 0.02f, GPanelAlpha), X, Y, W, H);
-	Hud.DrawRect(WithAlpha(Accent, 0.9f), X, Y, 3.f, H);
-	Hud.DrawRect(WithAlpha(Accent, 0.35f), X, Y, W, 1.f);
-	Hud.DrawRect(WithAlpha(Accent, 0.25f), X, Y + H - 1.f, W, 1.f);
+	const FLinearColor Bg = SCBg();
+	const FLinearColor Ed = SCEdge();
+	H.DrawRect(Bg, X, Y, W, Ht);
+	H.DrawRect(Ed, X,           Y,            W,  1.f);
+	H.DrawRect(Ed, X,           Y + Ht - 1.f, W,  1.f);
+	H.DrawRect(Ed, X,           Y,            1.f, Ht);
+	H.DrawRect(Ed, X + W - 1.f, Y,            1.f, Ht);
 }
 
-void DrawMeter(AHUD& Hud, const FString& Label, const float Value, const float MaxValue, const float X, const float Y, const float W,
-	const FLinearColor& FillColor, UFont* Font)
+// Thin track-and-fill bar with no label.
+void SCBar(AHUD& H, const float X, const float Y, const float W, const float Ht, const float N01, const FLinearColor& Fill)
 {
-	const float ClampedMax = FMath::Max(MaxValue, 1.f);
-	const float Normalized = FMath::Clamp(Value / ClampedMax, 0.f, 1.f);
-	const float BarY = Y + 18.f;
-	const float BarH = 12.f;
-
-	DrawShadowedText(Hud, Label, X, Y, FLinearColor(0.72f, 0.9f, 1.f, 1.f), Font);
-	Hud.DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.85f), X, BarY, W, BarH);
-	Hud.DrawRect(WithAlpha(FillColor, 0.95f), X, BarY, W * Normalized, BarH);
-	Hud.DrawRect(WithAlpha(FLinearColor::White, 0.14f), X, BarY, W, 1.f);
-	DrawShadowedText(Hud, FString::Printf(TEXT("%.0f%%"), Normalized * 100.f), X + W + 8.f, Y + 11.f, FillColor, Font);
+	const FLinearColor Ed = SCEdge();
+	H.DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.80f), X, Y, W, Ht);
+	const float Clamped = FMath::Clamp(N01, 0.f, 1.f);
+	if (Clamped > 0.f)
+	{
+		H.DrawRect(FLinearColor(Fill.R, Fill.G, Fill.B, 0.88f), X, Y, W * Clamped, Ht);
+	}
+	H.DrawRect(FLinearColor(Ed.R, Ed.G, Ed.B, 0.55f), X, Y,          W, 1.f);
+	H.DrawRect(FLinearColor(Ed.R, Ed.G, Ed.B, 0.55f), X, Y + Ht - 1.f, W, 1.f);
 }
 
-void DrawMiniLine(AHUD& Hud, const FString& Text, float& Y, const float X, UFont* Font, const FLinearColor& Color = FLinearColor::White)
+void SCLine(AHUD& H, const FString& T, float& Y, const float X, UFont* F, const FLinearColor& C = FLinearColor(0.88f, 0.90f, 0.86f, 1.f))
 {
-	DrawShadowedText(Hud, Text, X, Y, Color, Font);
-	Y += GLineHeight;
+	SCText(H, T, X, Y, C, F);
+	Y += GLineH;
 }
 }
 
@@ -110,19 +103,15 @@ void AStealthDebugHUD::DrawHUD()
 		return;
 	}
 
-	UFont* Font = GEngine->GetSmallFont();
-	const float ScreenW = Canvas->SizeX;
-	const float ScreenH = Canvas->SizeY;
+	UFont* Font  = GEngine->GetSmallFont();
+	const float SW = Canvas->SizeX;
+	const float SH = Canvas->SizeY;
 
-	const FStealthAlsDebugSnapshot Als = Sim->GetAlsDebugSnapshot();
 	const FStealthMovementState Mv = Sim->GetPlayerMovement();
-	const FVisibilityEmitter Vis = Sim->GetPlayerVisibility();
-	const FSoundEmitter Snd = Sim->GetPlayerSoundEmission();
-	const FObjectiveState Obj = Sim->GetObjectiveState();
-	const FExtractionState Ext = Sim->GetExtractionState();
-	const FStealthLightSamplingDebug Ls = Sim->GetLastLightSamplingDebug();
-	const TArray<FStealthSoundEvent> Events = Sim->GetActiveSoundEvents();
-
+	const FVisibilityEmitter Vis   = Sim->GetPlayerVisibility();
+	const FSoundEmitter Snd        = Sim->GetPlayerSoundEmission();
+	const FObjectiveState Obj      = Sim->GetObjectiveState();
+	const FExtractionState Ext     = Sim->GetExtractionState();
 	const TArray<TWeakObjectPtr<UStealthGuardBrainComponent>> Brains = Sim->GetRegisteredGuardBrains();
 	const UStealthGuardBrainComponent* PrimaryBrain = nullptr;
 	for (const TWeakObjectPtr<UStealthGuardBrainComponent>& BPtr : Brains)
@@ -134,39 +123,95 @@ void AStealthDebugHUD::DrawHUD()
 		}
 	}
 
-	const float Visibility01 = FMath::Clamp(Vis.CurrentVisibility, 0.f, 1.f);
-	const float Noise01 = FMath::Clamp(Snd.Radius / 1400.f, 0.f, 1.f);
-	const FLinearColor VisibilityColor = DangerColor(Visibility01);
-	const FLinearColor NoiseColor = DangerColor(Noise01);
-	const FLinearColor TacticalBlue(0.08f, 0.52f, 0.68f, 1.f);
+	const FSuspicionState Suspicion = PrimaryBrain ? PrimaryBrain->Suspicion : FSuspicionState();
+	const float Susp01   = FMath::Clamp(Suspicion.Value / 100.f, 0.f, 1.f);
+	const float Vis01    = FMath::Clamp(Vis.CurrentVisibility, 0.f, 1.f);
+	const float Noise01  = FMath::Clamp(Snd.Radius / 1400.f, 0.f, 1.f);
+	const FLinearColor SuspColor = SCSuspColor(Suspicion.State);
 
-	// Player-facing stealth gauges: readable at a glance, with labels left in for prototype tuning.
-	const float StealthX = 32.f;
-	const float StealthY = ScreenH - 188.f;
-	DrawPanel(*this, StealthX, StealthY, 360.f, 150.f, TacticalBlue);
-	DrawShadowedText(*this, TEXT("STEALTH SUIT"), StealthX + 16.f, StealthY + 12.f, FLinearColor(0.72f, 0.95f, 1.f, 1.f), Font, 1.08f);
-	DrawShadowedText(*this,
-		FString::Printf(TEXT("%s  |  %s  |  %.0f cm/s"), *EnumDisplayName(Mv.Stance), *EnumDisplayName(Mv.Locomotion), Mv.Speed),
-		StealthX + 16.f, StealthY + 34.f, FLinearColor(0.88f, 0.96f, 1.f, 1.f), Font);
-	DrawMeter(*this, TEXT("VISIBILITY"), Visibility01, 1.f, StealthX + 16.f, StealthY + 58.f, 245.f, VisibilityColor, Font);
-	DrawMeter(*this, TEXT("NOISE"), Snd.Radius, 1400.f, StealthX + 16.f, StealthY + 96.f, 245.f, NoiseColor, Font);
-	DrawShadowedText(*this, FString::Printf(TEXT("Light %.0f%%   Sounds %d"), Vis.LightExposure * 100.f, Events.Num()),
-		StealthX + 16.f, StealthY + 128.f, FLinearColor(0.62f, 0.82f, 0.9f, 1.f), Font);
+	// ── TOP CENTER: guard detection bar — thin horizontal strip like SC ───────
+	{
+		const float BarW  = SW * 0.28f;
+		const float BarX  = (SW - BarW) * 0.5f;
+		const float BarY  = 20.f;
+		const float BarHt = 6.f;
 
-	// Mission state stays persistent so the player knows what the current loop expects.
-	const float MissionX = 32.f;
-	const float MissionY = 38.f;
-	DrawPanel(*this, MissionX, MissionY, 330.f, 104.f, FLinearColor(0.1f, 0.72f, 0.52f, 1.f));
-	DrawShadowedText(*this, TEXT("MISSION"), MissionX + 16.f, MissionY + 12.f, FLinearColor(0.72f, 1.f, 0.88f, 1.f), Font, 1.08f);
-	DrawShadowedText(*this, Obj.bCompleted ? TEXT("Objective: COMPLETE") : TEXT("Objective: recover intel"),
-		MissionX + 16.f, MissionY + 38.f, Obj.bCompleted ? FLinearColor(0.22f, 1.f, 0.58f, 1.f) : FLinearColor::White, Font);
-	DrawShadowedText(*this,
-		Ext.bUsed ? TEXT("Extraction: USED") : (Ext.bAvailable ? TEXT("Extraction: AVAILABLE") : TEXT("Extraction: LOCKED")),
-		MissionX + 16.f, MissionY + 58.f, Ext.bAvailable ? FLinearColor(0.25f, 0.92f, 1.f, 1.f) : FLinearColor(0.9f, 0.75f, 0.45f, 1.f), Font);
-	DrawShadowedText(*this,
-		FString::Printf(TEXT("Run: %s"), Sim->HasAlertOccurred() ? TEXT("compromised") : TEXT("clean")),
-		MissionX + 16.f, MissionY + 78.f, Sim->HasAlertOccurred() ? FLinearColor(1.f, 0.62f, 0.18f, 1.f) : FLinearColor(0.58f, 0.95f, 1.f, 1.f), Font);
+		// Outer shadow frame
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.60f), BarX - 1.f, BarY - 1.f, BarW + 2.f, BarHt + 2.f);
+		// Fill proportional to suspicion
+		if (Susp01 > 0.005f)
+		{
+			DrawRect(FLinearColor(SuspColor.R, SuspColor.G, SuspColor.B, 0.82f), BarX, BarY, BarW * Susp01, BarHt);
+		}
+		// 1px border
+		const FLinearColor Ed = SCEdge();
+		DrawRect(Ed, BarX,          BarY,           BarW, 1.f);
+		DrawRect(Ed, BarX,          BarY + BarHt,   BarW, 1.f);
+		DrawRect(Ed, BarX,          BarY,            1.f, BarHt);
+		DrawRect(Ed, BarX + BarW,   BarY,            1.f, BarHt);
 
+		// State label only when suspicious or higher
+		const bool bShowLabel = Suspicion.State == EGuardSuspicionState::Suspicious
+			|| Suspicion.State == EGuardSuspicionState::Investigating
+			|| Suspicion.State == EGuardSuspicionState::Alert;
+		if (bShowLabel)
+		{
+			SCText(*this, SCEnumName(Suspicion.State), BarX + BarW + 10.f, BarY - 1.f, SuspColor, Font, 0.88f);
+		}
+	}
+
+	// ── BOTTOM RIGHT: player stealth readout — compact SC equipment panel ─────
+	{
+		const float PW   = 240.f;
+		const float PHt  = 84.f;
+		const float PX   = SW - PW - 20.f;
+		const float PY   = SH - PHt - 20.f;
+		SCPanel(*this, PX, PY, PW, PHt);
+
+		const float IX = PX + 12.f;
+		float IY = PY + 10.f;
+
+		// VIS row: label, bar, percent
+		const FLinearColor VC = SCRamp(Vis01);
+		SCText(*this, TEXT("VIS"), IX, IY, SCDim(), Font, 0.85f);
+		SCBar(*this, IX + 30.f, IY + 2.f, PW - 74.f, 8.f, Vis01, VC);
+		SCText(*this, FString::Printf(TEXT("%3.0f%%"), Vis01 * 100.f), PX + PW - 40.f, IY, VC, Font, 0.85f);
+		IY += 20.f;
+
+		// NSE row
+		const FLinearColor NC = SCRamp(Noise01);
+		SCText(*this, TEXT("NSE"), IX, IY, SCDim(), Font, 0.85f);
+		SCBar(*this, IX + 30.f, IY + 2.f, PW - 74.f, 8.f, Noise01, NC);
+		SCText(*this, FString::Printf(TEXT("%3.0f%%"), Noise01 * 100.f), PX + PW - 40.f, IY, NC, Font, 0.85f);
+		IY += 18.f;
+
+		// Thin divider
+		const FLinearColor Ed = SCEdge();
+		DrawRect(FLinearColor(Ed.R, Ed.G, Ed.B, 0.40f), IX, IY, PW - 24.f, 1.f);
+		IY += 8.f;
+
+		// Stance | Locomotion
+		SCText(*this, FString::Printf(TEXT("%s  |  %s"), *SCEnumName(Mv.Stance), *SCEnumName(Mv.Locomotion)), IX, IY, SCWhite(), Font, 0.88f);
+	}
+
+	// ── TOP LEFT: mission status — minimal flat text, no panel, SC-style ─────
+	{
+		const float MX = 20.f;
+		float MY = 20.f;
+
+		SCText(*this, FString::Printf(TEXT("OBJ  %s"), Obj.bCompleted ? TEXT("COMPLETE") : TEXT("ACTIVE")),
+			MX, MY, Obj.bCompleted ? SCGreen() : SCDim(), Font, 0.85f);
+		MY += 15.f;
+		SCText(*this, FString::Printf(TEXT("EXT  %s"), Ext.bUsed ? TEXT("USED") : (Ext.bAvailable ? TEXT("AVAILABLE") : TEXT("LOCKED"))),
+			MX, MY, Ext.bAvailable ? SCGreen() : SCDim(), Font, 0.85f);
+		if (Sim->HasAlertOccurred())
+		{
+			MY += 15.f;
+			SCText(*this, TEXT("COMPROMISED"), MX, MY, SCAmber(), Font, 0.85f);
+		}
+	}
+
+	// ── RIGHT PANEL: diagnostics — only when stealth.DebugDraw > 0 ───────────
 	int32 DebugDrawValue = 0;
 	if (IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("stealth.DebugDraw")))
 	{
@@ -175,41 +220,41 @@ void AStealthDebugHUD::DrawHUD()
 
 	if (DebugDrawValue > 0)
 	{
-		const float DebugX = ScreenW - 430.f;
-		const float DebugY = 160.f;
-		DrawPanel(*this, DebugX, DebugY, 400.f, 420.f, FLinearColor(0.75f, 0.82f, 1.f, 1.f));
-		float DY = DebugY + 14.f;
-		DrawMiniLine(*this, TEXT("STEALTH DIAGNOSTICS"), DY, DebugX + 16.f, Font, FLinearColor(0.78f, 0.86f, 1.f, 1.f));
-		DrawMiniLine(*this, FString::Printf(TEXT("ALS stance=%s gait=%s speed=%.1f"), *Als.AlsStance.ToString(), *Als.AlsGait.ToString(), Als.Speed),
-			DY, DebugX + 16.f, Font);
-		DrawMiniLine(*this, FString::Printf(TEXT("LocMode=%s action=%s"), *Als.AlsLocomotionMode.ToString(), *Als.AlsLocomotionAction.ToString()),
-			DY, DebugX + 16.f, Font);
-		DrawMiniLine(*this, FString::Printf(TEXT("RotMode=%s view=%s yaw=%.1f"), *Als.AlsRotationMode.ToString(), *Als.AlsViewMode.ToString(),
-			Sim->GetPlayerView().ViewYawSpeed), DY, DebugX + 16.f, Font);
-		DrawMiniLine(*this, FString::Printf(TEXT("Moving=%d input=%d"), Als.bMoving ? 1 : 0, Als.bHasInput ? 1 : 0), DY, DebugX + 16.f, Font);
+		const FStealthAlsDebugSnapshot Als = Sim->GetAlsDebugSnapshot();
+		const FStealthLightSamplingDebug Ls = Sim->GetLastLightSamplingDebug();
+		const TArray<FStealthSoundEvent> Events = Sim->GetActiveSoundEvents();
+		const float DX  = SW - 400.f;
+		const float DY0 = 130.f;
+		SCPanel(*this, DX, DY0, 376.f, 370.f);
+		float DY = DY0 + 12.f;
+		SCLine(*this, TEXT("DIAGNOSTICS"), DY, DX + 12.f, Font, SCDim());
+		SCLine(*this, FString::Printf(TEXT("als stance=%s gait=%s"), *Als.AlsStance.ToString(), *Als.AlsGait.ToString()),
+			DY, DX + 12.f, Font);
+		SCLine(*this, FString::Printf(TEXT("speed=%.1f moving=%d input=%d"), Als.Speed, Als.bMoving ? 1 : 0, Als.bHasInput ? 1 : 0),
+			DY, DX + 12.f, Font);
+		SCLine(*this, FString::Printf(TEXT("locmode=%s action=%s"), *Als.AlsLocomotionMode.ToString(), *Als.AlsLocomotionAction.ToString()),
+			DY, DX + 12.f, Font);
 		DY += 4.f;
-		DrawMiniLine(*this, FString::Printf(TEXT("Visibility %.2f = L %.2f x St %.2f x Mv %.2f x Act %.2f"), Vis.CurrentVisibility,
-			Vis.LightExposure, Vis.StanceMultiplier, Vis.MovementMultiplier, Vis.ActionMultiplier), DY, DebugX + 16.f, Font);
-		DrawMiniLine(*this, FString::Printf(TEXT("SceneLight final=%.2f max=%.2f smooth=%.2f lights=%d"), Ls.FinalExposure,
-			Ls.RawMaxExposure, Ls.SmoothedExposure, Ls.CachedLightCount), DY, DebugX + 16.f, Font);
+		SCLine(*this, FString::Printf(TEXT("vis=%.2f L=%.2f st=%.2f mv=%.2f act=%.2f"), Vis.CurrentVisibility,
+			Vis.LightExposure, Vis.StanceMultiplier, Vis.MovementMultiplier, Vis.ActionMultiplier), DY, DX + 12.f, Font);
+		SCLine(*this, FString::Printf(TEXT("scene final=%.2f max=%.2f lights=%d"), Ls.FinalExposure, Ls.RawMaxExposure, Ls.CachedLightCount),
+			DY, DX + 12.f, Font);
 		for (const FStealthBodyLightSampleDebug& Pt : Ls.BodySamples)
 		{
-			DrawMiniLine(*this, FString::Printf(TEXT("  %s: %.2f"), *Pt.SampleName, Pt.Exposure), DY, DebugX + 16.f, Font);
+			SCLine(*this, FString::Printf(TEXT("  %s: %.2f"), *Pt.SampleName, Pt.Exposure), DY, DX + 12.f, Font);
 		}
-		DrawMiniLine(*this, FString::Printf(TEXT("Noise radius=%.0f active sounds=%d"), Snd.Radius, Events.Num()), DY, DebugX + 16.f, Font);
+		SCLine(*this, FString::Printf(TEXT("noise=%.0f sounds=%d"), Snd.Radius, Events.Num()), DY, DX + 12.f, Font);
 		for (int32 i = 0; i < FMath::Min(3, Events.Num()); ++i)
 		{
-			DrawMiniLine(*this, FString::Printf(TEXT("  [%d] %s r=%.0f"), Events[i].EventId, *Events[i].DebugLabel, Events[i].Radius),
-				DY, DebugX + 16.f, Font);
+			SCLine(*this, FString::Printf(TEXT("  [%d] %s r=%.0f"), Events[i].EventId, *Events[i].DebugLabel, Events[i].Radius),
+				DY, DX + 12.f, Font);
 		}
 		if (PrimaryBrain)
 		{
-			const FLinearColor GuardColor = GuardStateColor(PrimaryBrain->Suspicion.State);
-			DrawMiniLine(*this, PrimaryBrain->GetDebugBrainLine(), DY, DebugX + 16.f, Font, GuardColor);
+			SCLine(*this, PrimaryBrain->GetDebugBrainLine(), DY, DX + 12.f, Font, SuspColor);
 		}
-		DrawMiniLine(*this, FString::Printf(TEXT("Alarm: %s Lvl %.0f %s"), Sim->GetAlarmState().bActive ? TEXT("ON") : TEXT("off"),
-			Sim->GetAlarmState().Level, *Sim->GetAlarmState().Reason), DY, DebugX + 16.f, Font);
-		DrawMiniLine(*this, FString::Printf(TEXT("Outcome=%s DebugDraw=%d"), *EnumDisplayName(Sim->GetMissionOutcome()), DebugDrawValue),
-			DY, DebugX + 16.f, Font);
+		const FString AlarmLine = FString::Printf(TEXT("alarm=%s outcome=%s"),
+			Sim->GetAlarmState().bActive ? TEXT("ON") : TEXT("off"), *SCEnumName(Sim->GetMissionOutcome()));
+		SCLine(*this, AlarmLine, DY, DX + 12.f, Font);
 	}
 }

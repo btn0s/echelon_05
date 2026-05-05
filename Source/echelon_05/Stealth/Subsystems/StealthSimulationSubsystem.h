@@ -170,6 +170,14 @@ private:
 	float ComputeSceneLightExposureAt(const FVector& SampleWorldPosition, const AActor* OcclusionIgnoreActor,
 		TArray<FStealthLightContributionDebug>* OutSortedContributions) const;
 
+	/**
+	 * Scans active unbounded PostProcessVolumes for an IndirectLightingIntensity override and
+	 * caches the result as a 0–1 scale.  Called inside RefreshSceneLightCache so it stays in
+	 * sync with the light cache refresh cadence.  When a PPV suppresses Lumen GI (value 0),
+	 * SceneLightAmbientExposure is driven to zero, matching what the renderer actually shows.
+	 */
+	void RefreshPPVIndirectScale();
+
 	UPROPERTY()
 	TObjectPtr<UStealthTuningDataAsset> TuningAsset;
 
@@ -190,6 +198,9 @@ private:
 	float LastSceneLightCacheTime = -100000.f;
 	float PlayerSmoothedLightExposure = 0.f;
 	FStealthLightSamplingDebug LastLightSamplingDebug;
+
+	/** Cached scale derived from active unbounded PPV IndirectLightingIntensity override (1 if none found). */
+	float CachedPPVIndirectScale = 1.f;
 
 	FObjectiveState ObjectiveState;
 	FExtractionState ExtractionState;

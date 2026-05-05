@@ -151,6 +151,8 @@ Stop and report instead of guessing if:
 - For UE-MCP reads of ALS Blueprints or live PIE state, serialize calls one at a time; batched reads are more likely to time out or fail.
 - For stealth guard behavior, favor Splinter Cell-style armed containment: maintain LOS and standoff, backpedal/strafe when crowded, and avoid sprinting directly into the player.
 - For stealth hearing design, keep sound reactions value-driven through suspicion/evidence math; avoid separate ad hoc pause or investigate timers that bypass suspicion state.
+- "Prototype" does not mean shortcuts are acceptable; implement features correctly even in early phases. Do not assume the user tolerates quick hacks because the work is described as a prototype.
+- Stealth HUD main panel must show only player-facing gameplay info (detection bar, VIS/NSE meters, stance, mission status); debug/tuning readouts (event counts, light-level percentages, raw numbers) must be gated behind `stealth.DebugDraw`.
 
 ## Learned Workspace Facts
 
@@ -161,4 +163,8 @@ Stop and report instead of guessing if:
 - `/Game/Stealth/Maps/L_StealthAls_Prototype` is moving toward a single ALS-backed guard setup; avoid keeping the legacy baseline `Stealth_Guard` alongside `Stealth_AlsGuard` unless explicitly comparing behavior.
 - Stealth patrol authoring now expects patrol points to have their own editable transforms/gizmos rather than hidden array-only offsets.
 - ALS-backed stealth guard presentation should stay rifle-ready during patrol and reserve aiming/combat movement for alert states; overlay objects and AnimBP layers should be mirrored project-side without editing `/ALS`.
+- Rendering↔perception contract: what the player sees visually (Lumen + PPV) must match what `StealthSimulationSubsystem` perceives; a guard must never detect a player in an area that renders pitch-black. The preferred fix is PPV-aware ambient derivation in the subsystem, not manual calibration of `SceneLightAmbientExposure`.
+- `StealthSimulationSubsystem` light sampling is renderer-independent (direct line-traced scene-light intensity); `SceneLightAmbientExposure=0.06` is a hardcoded floor that does not track PPV exposure bias or indirect-intensity overrides — it needs to read active PPV settings to stay in sync.
+- `L_StealthLightLab` uses `PPV_StealthNoir` (infinite extent, manual exposure, indirect=0, film S-curve), DirectionalLight at intensity 3 with no indirect/atmospheric, and `SkyLight_AmbientFloor` at intensity 0.04; root cause of prior overexposure was `SkyAtmosphere` + DirectionalLight at intensity 11 with no PostProcessVolume.
+- `PlayerStart_LightLab` should be placed in the ShadowBay (X≈0) for meaningful stealth testing; the SunBay placement (X≈−2200) shares the zone with the guard and bypasses the visibility gradient.
 

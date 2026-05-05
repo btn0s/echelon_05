@@ -7,58 +7,67 @@
 
 namespace
 {
-FLinearColor GuardWidgetStateColor(const EGuardSuspicionState State)
+// ── Splinter Cell palette (mirrors StealthDebugHUD) ──────────────────────────
+FLinearColor GBg()    { return FLinearColor(0.008f, 0.018f, 0.012f, 0.76f); }
+FLinearColor GEdge()  { return FLinearColor(0.30f,  0.44f,  0.36f,  0.60f); }
+FLinearColor GGreen() { return FLinearColor(0.48f,  0.74f,  0.58f,  1.f);  }
+FLinearColor GAmber() { return FLinearColor(0.78f,  0.70f,  0.35f,  1.f);  }
+FLinearColor GWarn()  { return FLinearColor(0.84f,  0.56f,  0.28f,  1.f);  }
+FLinearColor GHot()   { return FLinearColor(0.90f,  0.42f,  0.20f,  1.f);  }
+FLinearColor GWhite() { return FLinearColor(0.88f,  0.90f,  0.86f,  1.f);  }
+FLinearColor GDim()   { return FLinearColor(0.32f,  0.40f,  0.35f,  1.f);  }
+
+FLinearColor StateAccent(const EGuardSuspicionState State)
 {
 	switch (State)
 	{
-	case EGuardSuspicionState::Alert:
-		return FLinearColor(1.f, 0.08f, 0.05f, 1.f);
-	case EGuardSuspicionState::Investigating:
-		return FLinearColor(1.f, 0.48f, 0.08f, 1.f);
-	case EGuardSuspicionState::Suspicious:
-		return FLinearColor(1.f, 0.72f, 0.12f, 1.f);
-	case EGuardSuspicionState::Curious:
-		return FLinearColor(0.62f, 0.82f, 1.f, 1.f);
+	case EGuardSuspicionState::Alert:         return GHot();
+	case EGuardSuspicionState::Investigating: return GWarn();
+	case EGuardSuspicionState::Suspicious:    return GAmber();
+	case EGuardSuspicionState::Curious:       return GGreen();
 	case EGuardSuspicionState::Unaware:
-	default:
-		return FLinearColor(0.16f, 0.9f, 0.68f, 1.f);
+	default:                                  return GDim();
 	}
+}
+
+// Bar fill uses the same ramp as the player HUD detection strip.
+FLinearColor BarRamp(const float N)
+{
+	if (N >= 0.78f) return GWarn();
+	if (N >= 0.46f) return GAmber();
+	return GGreen();
 }
 
 template <typename TEnum>
-FString GuardWidgetEnumDisplayName(const TEnum Value)
+FString EUp(const TEnum V)
 {
-	if (const UEnum* Enum = StaticEnum<TEnum>())
+	if (const UEnum* E = StaticEnum<TEnum>())
 	{
-		return Enum->GetDisplayNameTextByValue(static_cast<int64>(Value)).ToString();
+		return E->GetDisplayNameTextByValue(static_cast<int64>(V)).ToString().ToUpper();
 	}
-	return FString::FromInt(static_cast<int32>(Value));
+	return FString::FromInt(static_cast<int32>(V));
 }
 
-void DrawWidgetBox(FSlateWindowElementList& OutDrawElements, const int32 LayerId, const FGeometry& Geometry, const FVector2D& Position,
-	const FVector2D& Size, const FLinearColor& Color)
+const FSlateBrush* WhiteBrush()
 {
-	FSlateDrawElement::MakeBox(
-		OutDrawElements,
-		LayerId,
-		Geometry.ToPaintGeometry(FVector2f(Size), FSlateLayoutTransform(FVector2f(Position))),
-		FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")),
-		ESlateDrawEffect::None,
-		Color);
+	return FCoreStyle::Get().GetBrush(TEXT("WhiteBrush"));
 }
 
-void DrawWidgetText(FSlateWindowElementList& OutDrawElements, const int32 LayerId, const FGeometry& Geometry, const FString& Text,
-	const FVector2D& Position, const FLinearColor& Color, const int32 Size = 11)
+void GBox(FSlateWindowElementList& Out, int32 Layer, const FGeometry& Geo,
+	const FVector2f Pos, const FVector2f Sz, const FLinearColor& C)
 {
-	const FSlateFontInfo Font = FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), Size);
-	FSlateDrawElement::MakeText(
-		OutDrawElements,
-		LayerId,
-		Geometry.ToPaintGeometry(FVector2f(1.f, 1.f), FSlateLayoutTransform(FVector2f(Position))),
-		Text,
-		Font,
-		ESlateDrawEffect::None,
-		Color);
+	FSlateDrawElement::MakeBox(Out, Layer,
+		Geo.ToPaintGeometry(Sz, FSlateLayoutTransform(Pos)),
+		WhiteBrush(), ESlateDrawEffect::None, C);
+}
+
+void GText(FSlateWindowElementList& Out, int32 Layer, const FGeometry& Geo,
+	const FString& Str, const FVector2f Pos, const FLinearColor& C, int32 Sz = 10)
+{
+	const FSlateFontInfo Font = FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), Sz);
+	FSlateDrawElement::MakeText(Out, Layer,
+		Geo.ToPaintGeometry(FVector2f(1.f, 1.f), FSlateLayoutTransform(Pos)),
+		Str, Font, ESlateDrawEffect::None, C);
 }
 }
 
@@ -67,47 +76,95 @@ void UStealthGuardStatusWidget::SetGuardBrain(UStealthGuardBrainComponent* InGua
 	GuardBrain = InGuardBrain;
 }
 
-int32 UStealthGuardStatusWidget::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
-	FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+int32 UStealthGuardStatusWidget::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
+	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements,
+	int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
-	const int32 ResultLayer = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
-	int32 CurrentLayer = ResultLayer + 1;
+	const int32 Base = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements,
+		LayerId, InWidgetStyle, bParentEnabled);
+	int32 L = Base + 1;
 
-	const FVector2D Size = AllottedGeometry.GetLocalSize();
-	const float PanelW = FMath::Max(Size.X, 260.f);
-	const float PanelH = FMath::Max(Size.Y, 64.f);
+	const FVector2D LocalSize = AllottedGeometry.GetLocalSize();
+	const float W = static_cast<float>(LocalSize.X);
+	const float H = static_cast<float>(LocalSize.Y);
 
-	const UStealthGuardBrainComponent* Brain = GuardBrain.Get();
-	const FSuspicionState Suspicion = Brain ? Brain->Suspicion : FSuspicionState();
-	const FGuardBrain BrainState = Brain ? Brain->Brain : FGuardBrain();
-	const FLinearColor Accent = GuardWidgetStateColor(Suspicion.State);
-	const float Suspicion01 = FMath::Clamp(Suspicion.Value / 100.f, 0.f, 1.f);
+	const UStealthGuardBrainComponent* Brain  = GuardBrain.Get();
+	const FSuspicionState Suspicion            = Brain ? Brain->Suspicion : FSuspicionState();
+	const FGuardBrain     BrainState           = Brain ? Brain->Brain    : FGuardBrain();
+	const float           Sus01               = FMath::Clamp(Suspicion.Value / 100.f, 0.f, 1.f);
+	const FLinearColor    Accent               = StateAccent(Suspicion.State);
 
-	DrawWidgetBox(OutDrawElements, CurrentLayer++, AllottedGeometry, FVector2D(0.f, 0.f), FVector2D(PanelW, PanelH),
-		FLinearColor(0.005f, 0.015f, 0.02f, 0.72f));
-	DrawWidgetBox(OutDrawElements, CurrentLayer++, AllottedGeometry, FVector2D(0.f, 0.f), FVector2D(4.f, PanelH), Accent);
-	DrawWidgetBox(OutDrawElements, CurrentLayer++, AllottedGeometry, FVector2D(0.f, 0.f), FVector2D(PanelW, 1.f),
-		FLinearColor(Accent.R, Accent.G, Accent.B, 0.35f));
+	// ── Background ────────────────────────────────────────────────────────────
+	GBox(OutDrawElements, L++, AllottedGeometry, FVector2f(0.f, 0.f), FVector2f(W, H), GBg());
 
-	const FString StateText = Brain
-		? FString::Printf(TEXT("%s  |  %s"), *GuardWidgetEnumDisplayName(Suspicion.State), *GuardWidgetEnumDisplayName(BrainState.Mode))
-		: FString(TEXT("Guard: --"));
-	DrawWidgetText(OutDrawElements, CurrentLayer++, AllottedGeometry, StateText, FVector2D(12.f, 9.f), Accent, 12);
+	// ── 1px border ────────────────────────────────────────────────────────────
+	const FLinearColor E = GEdge();
+	GBox(OutDrawElements, L++, AllottedGeometry, FVector2f(0.f, 0.f),   FVector2f(W, 1.f), E);   // top
+	GBox(OutDrawElements, L++, AllottedGeometry, FVector2f(0.f, H-1.f), FVector2f(W, 1.f), E);   // bottom
+	GBox(OutDrawElements, L++, AllottedGeometry, FVector2f(0.f, 0.f),   FVector2f(1.f, H), E);   // left
+	GBox(OutDrawElements, L++, AllottedGeometry, FVector2f(W-1.f, 0.f), FVector2f(1.f, H), E);   // right
 
-	const FVector2D BarPos(12.f, 34.f);
-	const FVector2D BarSize(PanelW - 24.f, 10.f);
-	DrawWidgetBox(OutDrawElements, CurrentLayer++, AllottedGeometry, BarPos, BarSize, FLinearColor(0.f, 0.f, 0.f, 0.86f));
-	DrawWidgetBox(OutDrawElements, CurrentLayer++, AllottedGeometry, BarPos, FVector2D(BarSize.X * Suspicion01, BarSize.Y), Accent);
-
-	const FString StimulusText = Suspicion.State == EGuardSuspicionState::Alert
-		? FString(TEXT("ALERT"))
-		: (Suspicion.bHadVisualStimulus ? FString(TEXT("VISUAL CONTACT"))
-			: (Suspicion.bHadAuditoryStimulus ? FString(TEXT("SOUND HEARD")) : Suspicion.LastReason));
-	if (!StimulusText.IsEmpty())
+	if (!Brain)
 	{
-		DrawWidgetText(OutDrawElements, CurrentLayer++, AllottedGeometry, StimulusText, FVector2D(12.f, 48.f),
-			FLinearColor(0.86f, 0.92f, 0.95f, 1.f), 10);
+		GText(OutDrawElements, L++, AllottedGeometry, TEXT("--"), FVector2f(10.f, 8.f), GDim(), 10);
+		return L;
 	}
 
-	return CurrentLayer;
+	// ── Row 1: state name (accent) + mode (dim, right-aligned) ───────────────
+	const FString StateName = EUp(Suspicion.State);
+	const FString ModeName  = EUp(BrainState.Mode);
+
+	GText(OutDrawElements, L++, AllottedGeometry, StateName,
+		FVector2f(10.f, 8.f), Accent, 11);
+
+	// Right-align mode — approximate: 7px per char at size 9
+	const float ModeX = W - static_cast<float>(ModeName.Len()) * 7.f - 10.f;
+	GText(OutDrawElements, L++, AllottedGeometry, ModeName,
+		FVector2f(FMath::Max(ModeX, W * 0.5f), 10.f), GDim(), 9);
+
+	// ── Thin divider ─────────────────────────────────────────────────────────
+	GBox(OutDrawElements, L++, AllottedGeometry, FVector2f(10.f, 26.f), FVector2f(W - 20.f, 1.f), GEdge());
+
+	// ── Suspicion bar ────────────────────────────────────────────────────────
+	constexpr float BarY = 32.f;
+	constexpr float BarH = 7.f;
+	const float     BarW = W - 20.f;
+	// track
+	GBox(OutDrawElements, L++, AllottedGeometry,
+		FVector2f(10.f, BarY), FVector2f(BarW, BarH),
+		FLinearColor(0.f, 0.f, 0.f, 0.70f));
+	// fill
+	if (Sus01 > 0.f)
+	{
+		GBox(OutDrawElements, L++, AllottedGeometry,
+			FVector2f(10.f, BarY), FVector2f(BarW * Sus01, BarH),
+			BarRamp(Sus01));
+	}
+
+	// ── Stimulus text ─────────────────────────────────────────────────────────
+	FString Stim;
+	if (Suspicion.State == EGuardSuspicionState::Alert)
+	{
+		Stim = TEXT("ALERT");
+	}
+	else if (Suspicion.bHadVisualStimulus)
+	{
+		Stim = TEXT("VISUAL");
+	}
+	else if (Suspicion.bHadAuditoryStimulus)
+	{
+		Stim = TEXT("SOUND");
+	}
+	else if (!Suspicion.LastReason.IsEmpty())
+	{
+		Stim = Suspicion.LastReason.ToUpper();
+	}
+
+	if (!Stim.IsEmpty())
+	{
+		GText(OutDrawElements, L++, AllottedGeometry, Stim,
+			FVector2f(10.f, 44.f), GWhite(), 9);
+	}
+
+	return L;
 }
