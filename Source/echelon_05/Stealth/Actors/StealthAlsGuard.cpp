@@ -3,9 +3,11 @@
 #include "Stealth/AI/StealthAlsAIController.h"
 #include "Stealth/Components/StealthGuardBrainComponent.h"
 #include "Stealth/Types/StealthEnums.h"
+#include "Stealth/UI/StealthGuardStatusWidget.h"
 
 #include "Animation/AnimInstance.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/WidgetComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Settings/AlsCharacterSettings.h"
 #include "Settings/AlsMovementSettings.h"
@@ -19,6 +21,16 @@ AStealthAlsGuard::AStealthAlsGuard(const FObjectInitializer& ObjectInitializer)
 	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	GuardBrain = CreateDefaultSubobject<UStealthGuardBrainComponent>(TEXT("GuardBrain"));
+
+	GuardStatusWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("GuardStatusWidget"));
+	GuardStatusWidget->SetupAttachment(GetRootComponent());
+	GuardStatusWidget->SetRelativeLocation(FVector(0.f, 0.f, 155.f));
+	GuardStatusWidget->SetWidgetClass(UStealthGuardStatusWidget::StaticClass());
+	GuardStatusWidget->SetWidgetSpace(EWidgetSpace::Screen);
+	GuardStatusWidget->SetDrawSize(FVector2D(260.f, 64.f));
+	GuardStatusWidget->SetDrawAtDesiredSize(false);
+	GuardStatusWidget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	GuardStatusWidget->SetGenerateOverlapEvents(false);
 
 	OverlaySkeletalMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("OverlaySkeletalMesh"));
 	OverlaySkeletalMeshComponent->SetupAttachment(GetMesh(), TEXT("Rifle"));
@@ -82,6 +94,14 @@ void AStealthAlsGuard::BeginPlay()
 		OverlaySkeletalMeshComponent->SetSkeletalMesh(RifleOverlaySkeletalMesh);
 		OverlaySkeletalMeshComponent->SetHiddenInGame(false);
 		OverlaySkeletalMeshComponent->SetVisibility(true, true);
+	}
+	if (GuardStatusWidget)
+	{
+		GuardStatusWidget->InitWidget();
+		if (UStealthGuardStatusWidget* StatusWidget = Cast<UStealthGuardStatusWidget>(GuardStatusWidget->GetUserWidgetObject()))
+		{
+			StatusWidget->SetGuardBrain(FindActiveGuardBrain());
+		}
 	}
 	RefreshOverlayAnimationLayer();
 }

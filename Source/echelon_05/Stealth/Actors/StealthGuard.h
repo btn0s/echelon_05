@@ -6,6 +6,7 @@
 #include "StealthGuard.generated.h"
 
 class UStealthGuardBrainComponent;
+class UWidgetComponent;
 
 /** Baseline non-ALS stealth guard (legacy locomotion). Logic lives on GuardBrain. */
 UCLASS()
@@ -23,4 +24,7 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stealth")
 	TObjectPtr<UStealthGuardBrainComponent> GuardBrain;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stealth|UI")
+	TObjectPtr<UWidgetComponent> GuardStatusWidget;
 };
