@@ -58,13 +58,13 @@ ALS player movement facts
 Prototype content should be isolated under:
 
 ```text
-/Game/_Dev/StealthDemo/
+/Game/Stealth/
 ```
 
 Recommended map path:
 
 ```text
-/Game/_Dev/StealthDemo/Maps/L_StealthAls_Prototype
+/Game/Stealth/Maps/L_StealthAls_Prototype
 ```
 
 ## Git LFS

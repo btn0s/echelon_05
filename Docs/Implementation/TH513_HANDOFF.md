@@ -12,7 +12,7 @@ Implemented:
   - Changed interaction probing from a line trace to the planned sphere sweep.
   - Updated guard hearing so continuous movement noise can update last-known player position.
   - Added project-side Enhanced Input binding support to `UStealthInteractorComponent`.
-  - Created `/Game/_Dev/StealthDemo` folders, Blueprint wrappers, tuning data, use input action/mapping context, and the prototype level.
+  - Created `/Game/Stealth` folders, Blueprint wrappers, tuning data, use input action/mapping context, and the prototype level (migrated from former `_Dev/StealthDemo`).
 
 Readability pass (prototype legibility):
 
@@ -23,7 +23,7 @@ Readability pass (prototype legibility):
 
 Map path:
 
-- `/Game/_Dev/StealthDemo/Maps/L_StealthAls_Prototype`.
+- `/Game/Stealth/Maps/L_StealthAls_Prototype`.
 - The map contains a player start, stealth demo GameMode override, guard, patrol route, lit/shadow volumes, lure source, objective, extraction zone, blockout floor/cover, directional light, navmesh bounds, and route readability markers.
 
 Build result:
@@ -57,7 +57,7 @@ Files changed:
 - `Source/echelon_05/Stealth/UI/StealthDebugHUD.cpp`
 - `Source/echelon_05/Stealth/Types/StealthEnums.h`
 - `Source/echelon_05/Stealth/Types/StealthTypes.h`
-- `Content/_Dev/StealthDemo/**`
+- `Content/Stealth/**`
 - `Docs/Implementation/TH513_HANDOFF.md`
 
 ALS plugin touched:

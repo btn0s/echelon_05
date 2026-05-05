@@ -12,8 +12,8 @@ This spike documents whether the Unreal Editor bridge (UE-MCP) is ready for agen
 
 | Asset / path | Purpose |
 | --- | --- |
-| `/Game/_Dev/MCP/` | Dev folder for MCP smoke artifacts (`asset(action="create_folder")`). |
-| `/Game/_Dev/MCP/BP_MCP_SmokeTest` | Disposable `Actor` Blueprint: extra `SceneComponent` (`McpSmokeRoot`), `int` variable `SmokeTestCounter`, **EventGraph** wired **Event BeginPlay → KismetSystemLibrary::PrintString** (`InString` = `[MCP SmokeTest] BeginPlay fired`), compiled successfully. |
+| `/Game/MCP_Smoke/` | Dev folder for MCP smoke artifacts (`asset(action="create_folder")`). |
+| `/Game/MCP_Smoke/BP_MCP_SmokeTest` | Disposable `Actor` Blueprint: extra `SceneComponent` (`McpSmokeRoot`), `int` variable `SmokeTestCounter`, **EventGraph** wired **Event BeginPlay → KismetSystemLibrary::PrintString** (`InString` = `[MCP SmokeTest] BeginPlay fired`), compiled successfully. |
 | `L_Als_Playground` | Existing playground map used to place one instance (`MCP_SmokeTest_00` at origin + Z=500), then saved. |
 
 Remove or ignore these when cleaning dev state; they are not part of shipping gameplay.
@@ -29,10 +29,10 @@ Remove or ignore these when cleaning dev state; they are not part of shipping ga
 | 1. `project(action="get_status")` | **Pass** | `mode: live`, `editorConnected: true`, project **echelon_05**, engine **5.7**, `.uproject` path reported. |
 | 2. Read ALS Blueprint `/ALS/ALS/Character/B_Als_Character` | **Pass** | Parent `AlsCharacterExample`; SCS lists `OverlaySkeletalMesh`, `OverlayStaticMesh`. |
 | 3. List graphs + lightweight graph summary | **Pass** | `list_graphs` returned 7 graphs (incl. `EventGraph`, 15 nodes). `read_graph_summary` on `EventGraph` returned nodes + exec/data edges. |
-| 4. Create disposable Blueprint `/Game/_Dev/MCP/BP_MCP_SmokeTest` parent `Actor` | **Pass** | See workarounds below — initial attempts failed until folder + path shape were corrected. |
+| 4. Create disposable Blueprint `/Game/MCP_Smoke/BP_MCP_SmokeTest` parent `Actor` | **Pass** | See workarounds below — initial attempts failed until folder + path shape were corrected. |
 | 5. Add component + variable | **Pass** | `McpSmokeRoot` (`SceneComponent` under default root); variable `SmokeTestCounter` (`int`). |
 | 6. Compile + read back | **Pass** | `compile` succeeded; `read` shows both components; `list_variables` shows `SmokeTestCounter`. |
-| 7. Place in level | **Pass** | `place_actor` with `actorClass` `/Game/_Dev/MCP/BP_MCP_SmokeTest.BP_MCP_SmokeTest_C`, label `MCP_SmokeTest_00`. |
+| 7. Place in level | **Pass** | `place_actor` with `actorClass` `/Game/MCP_Smoke/BP_MCP_SmokeTest.BP_MCP_SmokeTest_C`, label `MCP_SmokeTest_00`. |
 | 8. Save + verify outliner | **Pass** | `level(action="save")`; `get_outliner` with `nameFilter: MCP_SmokeTest` returns the placed actor and expected components. |
 | 9. Document gaps / workarounds | **Pass** | This section below. |
 
@@ -42,27 +42,27 @@ Remove or ignore these when cleaning dev state; they are not part of shipping ga
 
 ### 1. Content folder must exist before Blueprint create
 
-`blueprint(action="create", …)` returned **"Failed to create Blueprint"** when `/Game/_Dev/MCP` did not exist.
+`blueprint(action="create", …)` returned **"Failed to create Blueprint"** when `/Game/MCP_Smoke` did not exist.
 
-**Workaround:** call `asset(action="create_folder", path="/Game/_Dev/MCP")` (or `paths[]` for several folders) first.
+**Workaround:** call `asset(action="create_folder", path="/Game/MCP_Smoke")` (or `paths[]` for several folders) first.
 
 ### 2. `blueprint` `create` `assetPath` shape
 
 Using a full object-style path **failed**:
 
-- Failed: `/Game/_Dev/MCP/BP_MCP_SmokeTest.BP_MCP_SmokeTest`
+- Failed: `/Game/MCP_Smoke/BP_MCP_SmokeTest.BP_MCP_SmokeTest`
 
 Using a **package-style** path (no `.AssetName` suffix) **succeeded**:
 
-- OK: `/Game/_Dev/MCP/BP_MCP_SmokeTest`
+- OK: `/Game/MCP_Smoke/BP_MCP_SmokeTest`
 
-The handler response then exposes `objectPath` `/Game/_Dev/MCP/BP_MCP_SmokeTest.BP_MCP_SmokeTest` for subsequent `read` / `compile` / etc.
+The handler response then exposes `objectPath` `/Game/MCP_Smoke/BP_MCP_SmokeTest.BP_MCP_SmokeTest` for subsequent `read` / `compile` / etc.
 
 **Guidance for agents:** prefer package path for `create`; use `objectPath` from the response (or the usual `/Path/Name.Name` form) for reads and mutations.
 
 ### 3. Spawning Blueprint-derived actors via `level.place_actor`
 
-**Working value** for `actorClass` in this run: `/Game/_Dev/MCP/BP_MCP_SmokeTest.BP_MCP_SmokeTest_C` (generated class path with `_C` suffix).
+**Working value** for `actorClass` in this run: `/Game/MCP_Smoke/BP_MCP_SmokeTest.BP_MCP_SmokeTest_C` (generated class path with `_C` suffix).
 
 If `place_actor` fails, verify the Blueprint compiled and try the `_C` object path from the Content Browser / asset tool output.
 

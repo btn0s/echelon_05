@@ -112,14 +112,14 @@ Source/echelon_05/Stealth/
 Suggested content folders:
 
 ```text
-Content/_Dev/StealthDemo/
+Content/Stealth/
   Blueprints/
   Maps/
   UI/
   Data/
 ```
 
-The names can change during implementation, but keep prototype content visibly isolated under `_Dev/StealthDemo`.
+The names can change during implementation, but keep prototype content under `/Game/Stealth`.
 
 ## ECS Component MVP
 
@@ -341,7 +341,7 @@ Do not put stealth formulas inside ALS animation assets.
 
 ## Demo Level Actor Setup
 
-Create isolated prototype assets under `Content/_Dev/StealthDemo`.
+Create prototype assets under `Content/Stealth`.
 
 Required actors:
 
@@ -360,7 +360,7 @@ Required actors:
 Recommended map:
 
 ```text
-/Game/_Dev/StealthDemo/Maps/L_StealthAls_Prototype
+/Game/Stealth/Maps/L_StealthAls_Prototype
 ```
 
 ## Initial Tuning Table

@@ -24,7 +24,7 @@ The intent is to be prescriptive about boundaries, dependencies, acceptance crit
 Allowed implementation areas:
 
 - `Source/echelon_05/`
-- project `Content/`, preferably isolated under `/Game/_Dev/StealthDemo`
+- project `Content/`, preferably isolated under `/Game/Stealth`
 - project `Config/` only when a project-owned setting is required
 - `Docs/demo/` and `Docs/Implementation/`
 
@@ -93,7 +93,7 @@ Link the player ALS character to the stealth runtime state and normalize ALS mov
 ### Allowed Files / Scope
 
 - `Source/echelon_05/Stealth/**`
-- project-owned player wrapper/component/Blueprint under `/Game/_Dev/StealthDemo/**` if needed
+- project-owned player wrapper/component/Blueprint under `/Game/Stealth/**` if needed
 - debug documentation updates in `Docs/Implementation/`
 
 ### Dependencies
@@ -134,8 +134,8 @@ Create the first debug surface that shows raw ALS adapter facts and derived stea
 ### Allowed Files / Scope
 
 - `Source/echelon_05/Stealth/**`
-- `/Game/_Dev/StealthDemo/UI/**`
-- `/Game/_Dev/StealthDemo/Blueprints/**`
+- `/Game/Stealth/UI/**`
+- `/Game/Stealth/Blueprints/**`
 - `Docs/Implementation/**`
 
 ### Dependencies
@@ -174,9 +174,9 @@ Compute player visibility from ALS-derived stance/locomotion/body state plus sim
 ### Allowed Files / Scope
 
 - `Source/echelon_05/Stealth/**`
-- `/Game/_Dev/StealthDemo/Blueprints/**`
-- `/Game/_Dev/StealthDemo/Data/**`
-- `/Game/_Dev/StealthDemo/Maps/**` if volumes are placed
+- `/Game/Stealth/Blueprints/**`
+- `/Game/Stealth/Data/**`
+- `/Game/Stealth/Maps/**` if volumes are placed
 
 ### Dependencies
 
@@ -215,9 +215,9 @@ Create the first sound/noise path: continuous movement noise plus discrete proje
 ### Allowed Files / Scope
 
 - `Source/echelon_05/Stealth/**`
-- `/Game/_Dev/StealthDemo/Blueprints/**`
-- `/Game/_Dev/StealthDemo/Data/**`
-- `/Game/_Dev/StealthDemo/Maps/**`
+- `/Game/Stealth/Blueprints/**`
+- `/Game/Stealth/Data/**`
+- `/Game/Stealth/Maps/**`
 
 ### Dependencies
 
@@ -256,9 +256,9 @@ Add one guard that can perceive the ALS-driven player through project-owned visi
 ### Allowed Files / Scope
 
 - `Source/echelon_05/Stealth/**`
-- `/Game/_Dev/StealthDemo/Blueprints/**`
-- `/Game/_Dev/StealthDemo/Maps/**`
-- `/Game/_Dev/StealthDemo/Data/**`
+- `/Game/Stealth/Blueprints/**`
+- `/Game/Stealth/Maps/**`
+- `/Game/Stealth/Data/**`
 
 ### Dependencies
 
@@ -298,8 +298,8 @@ Give the guard simple readable behavior: patrol while unaware, investigate stimu
 ### Allowed Files / Scope
 
 - `Source/echelon_05/Stealth/**`
-- `/Game/_Dev/StealthDemo/Blueprints/**`
-- `/Game/_Dev/StealthDemo/Maps/**`
+- `/Game/Stealth/Blueprints/**`
+- `/Game/Stealth/Maps/**`
 
 ### Dependencies
 
@@ -335,9 +335,9 @@ Create the compact stealth lane used to prove the whole loop: spawn, patrol spac
 
 ### Allowed Files / Scope
 
-- `/Game/_Dev/StealthDemo/Maps/**`
-- `/Game/_Dev/StealthDemo/Blueprints/**`
-- `/Game/_Dev/StealthDemo/Data/**`
+- `/Game/Stealth/Maps/**`
+- `/Game/Stealth/Blueprints/**`
+- `/Game/Stealth/Data/**`
 - `Docs/demo/**` for level notes
 
 ### Dependencies
@@ -347,7 +347,7 @@ Create the compact stealth lane used to prove the whole loop: spawn, patrol spac
 
 ### Acceptance Criteria
 
-- Prototype map exists under `/Game/_Dev/StealthDemo/Maps/`, preferably `/Game/_Dev/StealthDemo/Maps/L_StealthAls_Prototype`.
+- Prototype map exists under `/Game/Stealth/Maps/`, preferably `/Game/Stealth/Maps/L_StealthAls_Prototype`.
 - Map contains player start, one guard, patrol route, lit route, shadow route, lure/noise point, objective placeholder, extraction placeholder, and debug surface.
 - Level layout supports the gameplay beat sheet from the gameplay design doc.
 - Assets are clearly dev/prototype scoped.
@@ -376,9 +376,9 @@ Complete the mission loop: interact with objective, unlock extraction, and repor
 ### Allowed Files / Scope
 
 - `Source/echelon_05/Stealth/**`
-- `/Game/_Dev/StealthDemo/Blueprints/**`
-- `/Game/_Dev/StealthDemo/UI/**`
-- `/Game/_Dev/StealthDemo/Maps/**`
+- `/Game/Stealth/Blueprints/**`
+- `/Game/Stealth/UI/**`
+- `/Game/Stealth/Maps/**`
 
 ### Dependencies
 
@@ -419,8 +419,8 @@ Run the end-to-end scenarios, tune relationships for readability, and document w
 
 - `Docs/demo/**`
 - `Docs/Implementation/**`
-- tuning data under `/Game/_Dev/StealthDemo/Data/**`
-- small fixes in `Source/echelon_05/Stealth/**` or `/Game/_Dev/StealthDemo/**` only when needed to satisfy acceptance
+- tuning data under `/Game/Stealth/Data/**`
+- small fixes in `Source/echelon_05/Stealth/**` or `/Game/Stealth/**` only when needed to satisfy acceptance
 
 ### Dependencies
 

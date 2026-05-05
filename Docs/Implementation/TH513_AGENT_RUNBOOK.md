@@ -27,7 +27,7 @@ Use these defaults unless a human explicitly changes the plan:
 - Footsteps use fallback distance/time polling first.
 - Do not build an animation-notify footstep bridge until the fallback loop is working.
 - Do not build a general-purpose ECS framework before the demo loop works.
-- Keep prototype content isolated under `/Game/_Dev/StealthDemo`.
+- Keep prototype content isolated under `/Game/Stealth`.
 - Keep C++ implementation under `Source/echelon_05/Stealth`.
 
 ## Allowed Scope
@@ -35,7 +35,7 @@ Use these defaults unless a human explicitly changes the plan:
 Allowed implementation areas:
 
 - `Source/echelon_05/`
-- project `Content/`, preferably `/Game/_Dev/StealthDemo`
+- project `Content/`, preferably `/Game/Stealth`
 - project `Config/` only when a project-owned setting is required
 - `Docs/demo/`
 - `Docs/Implementation/`
@@ -101,7 +101,7 @@ Before Blueprint or level work, confirm the editor bridge:
 Known prototype map target:
 
 ```text
-/Game/_Dev/StealthDemo/Maps/L_StealthAls_Prototype
+/Game/Stealth/Maps/L_StealthAls_Prototype
 ```
 
 Known ALS Blueprint package path:

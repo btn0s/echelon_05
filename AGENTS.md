@@ -42,7 +42,7 @@ Default first-pass decisions:
 - Blueprints may own prototype actor setup, map placement, tuning data, simple UI, and debug presentation.
 - Guard can start as a simple project-owned non-ALS actor.
 - Footsteps use fallback distance/time polling first.
-- Prototype content should live under `/Game/_Dev/StealthDemo`.
+- Prototype content lives under `/Game/Stealth`.
 - Project C++ should live under `Source/echelon_05/Stealth`.
 
 ### TH-505 / ALS Locomotion Documentation
@@ -95,7 +95,7 @@ Known project map/package facts:
 
 - Repo-root playground map: `/Game/L_Als_Playground`
 - ALS plugin content mount: `/ALS`
-- Recommended TH-513 prototype map: `/Game/_Dev/StealthDemo/Maps/L_StealthAls_Prototype`
+- Recommended TH-513 prototype map: `/Game/Stealth/Maps/L_StealthAls_Prototype`
 
 ## Git And Unreal Assets
 
