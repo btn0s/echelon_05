@@ -27,6 +27,10 @@
 			"Enabled": true
 		},
 		{
+			"Name": "BlueprintAutoLayout",
+			"Enabled": true
+		},
+		{
 			"Name": "Niagara",
 			"Enabled": true
 		},
