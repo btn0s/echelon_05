@@ -7,6 +7,8 @@
 #include "Stealth/Subsystems/StealthSimulationSubsystem.h"
 
 #include "Components/CapsuleComponent.h"
+#include "Components/SceneComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Pawn.h"
@@ -28,6 +30,13 @@ AStealthGuard::AStealthGuard()
 
 	GetCapsuleComponent()->SetCapsuleHalfHeight(88.f);
 	GetCapsuleComponent()->SetCapsuleRadius(34.f);
+
+	if (USkeletalMeshComponent* SkelMesh = GetMesh())
+	{
+		// DM_Low hides this mesh when the viewport/scalability detail level is higher than Low (typical editor default).
+		SkelMesh->DetailMode = DM_Epic;
+		SkelMesh->SetUpdateAnimationInEditor(true);
+	}
 
 	if (UCharacterMovementComponent* Move = GetCharacterMovement())
 	{
@@ -383,6 +392,7 @@ bool AStealthGuard::ComputeAuditoryStimulus(const UStealthSimulationSubsystem* S
 
 FString AStealthGuard::GetDebugBrainLine() const
 {
-	return FString::Printf(TEXT("Brain=%d Sus=%.0f State=%d | %s"), static_cast<int32>(Brain.Mode), Suspicion.Value,
-		static_cast<int32>(Suspicion.State), *Suspicion.LastReason);
+	return FString::Printf(TEXT("Brain=%d Sus=%.0f State=%d See=%d Hear=%d | %s"), static_cast<int32>(Brain.Mode),
+		Suspicion.Value, static_cast<int32>(Suspicion.State), Suspicion.bHadVisualStimulus ? 1 : 0,
+		Suspicion.bHadAuditoryStimulus ? 1 : 0, *Suspicion.LastReason);
 }

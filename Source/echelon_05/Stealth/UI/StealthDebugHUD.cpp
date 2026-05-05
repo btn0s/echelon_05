@@ -3,6 +3,7 @@
 #include "Stealth/Actors/StealthGuard.h"
 #include "Stealth/Subsystems/StealthSimulationSubsystem.h"
 
+#include "HAL/IConsoleManager.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 
@@ -96,5 +97,11 @@ void AStealthDebugHUD::DrawHUD()
 		Obj.bCompleted ? TEXT("done") : TEXT("open"), Ext.bAvailable ? TEXT("Y") : TEXT("N"), Ext.bUsed ? TEXT("Y") : TEXT("N")));
 	LineR(FString::Printf(TEXT("MissionOutcome: %d | Compromised: %s"), static_cast<int32>(Sim->GetMissionOutcome()),
 		Sim->HasAlertOccurred() ? TEXT("Y") : TEXT("N")));
-	LineR(TEXT("stealth.DebugDraw cvar: guard cone/hearing"));
+
+	int32 DebugDrawValue = 0;
+	if (IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("stealth.DebugDraw")))
+	{
+		DebugDrawValue = CVar->GetInt();
+	}
+	LineR(FString::Printf(TEXT("stealth.DebugDraw=%d (cone/hearing); set 0 to hide"), DebugDrawValue));
 }
