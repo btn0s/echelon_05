@@ -260,13 +260,53 @@ void UStealthGuardBrainComponent::ApplyStealthMovement(AAIController* AI, float 
 
 	if (Brain.Mode == EGuardBrainMode::Chase && PlayerPawn)
 	{
+		AI->SetFocus(PlayerPawn, EAIFocusPriority::Gameplay);
+
+		const FVector OwnerLocation = OwnerPawn->GetActorLocation();
+		const FVector PlayerLocation = PlayerPawn->GetActorLocation();
+		const float DistanceToPlayer2D = FVector::Dist2D(OwnerLocation, PlayerLocation);
+
+		if (DistanceToPlayer2D < CombatMinimumDistance)
+		{
+			FVector AwayFromPlayer = OwnerLocation - PlayerLocation;
+			AwayFromPlayer.Z = 0.f;
+			if (!AwayFromPlayer.Normalize())
+			{
+				AwayFromPlayer = -OwnerPawn->GetActorForwardVector();
+				AwayFromPlayer.Z = 0.f;
+				AwayFromPlayer.Normalize();
+			}
+
+			const FVector TacticalPosition = PlayerLocation + AwayFromPlayer * CombatPreferredDistance;
+			if (Now - LastMoveRequestTime >= MoveRequestMinInterval)
+			{
+				const EPathFollowingRequestResult::Type Result =
+					AI->MoveToLocation(TacticalPosition, MoveToAcceptanceRadius, true, true, true, true, nullptr, true);
+				if (Result == EPathFollowingRequestResult::Failed)
+				{
+					UE_LOG(LogStealth, Warning, TEXT("%s failed combat spacing MoveToLocation %s."),
+						*OwnerPawn->GetName(), *TacticalPosition.ToCompactString());
+				}
+				LastMoveRequestTime = Now;
+			}
+			return;
+		}
+
+		if (DistanceToPlayer2D <= CombatMaximumDistance)
+		{
+			AI->StopMovement();
+			return;
+		}
+
 		if (Now - LastMoveRequestTime >= MoveRequestMinInterval)
 		{
-			AI->MoveToActor(PlayerPawn, 90.f, true, true, false, 0, true);
+			AI->MoveToActor(PlayerPawn, CombatPreferredDistance, true, true, true, 0, true);
 			LastMoveRequestTime = Now;
 		}
 		return;
 	}
+
+	AI->ClearFocus(EAIFocusPriority::Gameplay);
 
 	if (Brain.Mode == EGuardBrainMode::Investigate)
 	{

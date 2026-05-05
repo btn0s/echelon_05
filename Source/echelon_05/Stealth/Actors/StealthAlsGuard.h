@@ -5,6 +5,7 @@
 #include "StealthAlsGuard.generated.h"
 
 class UStealthGuardBrainComponent;
+class UAnimInstance;
 
 /** ALS-backed stealth guard: presentation via ALS; stealth logic on GuardBrain; AI movement via BT + StealthAls AI controller. */
 UCLASS()
@@ -18,12 +19,24 @@ public:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 
+	virtual void OnOverlayModeChanged_Implementation(FGameplayTag PreviousOverlayMode) override;
+
 	UFUNCTION(BlueprintPure, Category = "Stealth")
 	FString GetDebugBrainLine() const;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stealth")
 	TObjectPtr<UStealthGuardBrainComponent> GuardBrain;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stealth|Presentation")
+	TSubclassOf<UAnimInstance> DefaultOverlayAnimationClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stealth|Presentation")
+	TSubclassOf<UAnimInstance> RifleOverlayAnimationClass;
+
 protected:
 	void ApplyAlsLocomotionPresentation();
+
+	void RefreshOverlayAnimationLayer();
+
+	UStealthGuardBrainComponent* FindActiveGuardBrain() const;
 };

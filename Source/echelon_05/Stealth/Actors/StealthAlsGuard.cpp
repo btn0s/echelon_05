@@ -4,6 +4,8 @@
 #include "Stealth/Components/StealthGuardBrainComponent.h"
 #include "Stealth/Types/StealthEnums.h"
 
+#include "Animation/AnimInstance.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Settings/AlsCharacterSettings.h"
 #include "Settings/AlsMovementSettings.h"
 #include "UObject/ConstructorHelpers.h"
@@ -12,6 +14,9 @@
 AStealthAlsGuard::AStealthAlsGuard(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
+
 	GuardBrain = CreateDefaultSubobject<UStealthGuardBrainComponent>(TEXT("GuardBrain"));
 
 	AIControllerClass = AStealthAlsAIController::StaticClass();
@@ -32,11 +37,28 @@ AStealthAlsGuard::AStealthAlsGuard(const FObjectInitializer& ObjectInitializer)
 	{
 		MovementSettings = DefaultMovementSettings.Object;
 	}
+
+	static ConstructorHelpers::FClassFinder<UAnimInstance> DefaultOverlayAnimationClassFinder(
+		TEXT("/ALS/ALS/Character/AnimationInstances/Overlays/AB_Als_Default"));
+	if (DefaultOverlayAnimationClassFinder.Succeeded())
+	{
+		DefaultOverlayAnimationClass = DefaultOverlayAnimationClassFinder.Class;
+	}
+
+	static ConstructorHelpers::FClassFinder<UAnimInstance> RifleOverlayAnimationClassFinder(
+		TEXT("/ALS/ALS/Character/AnimationInstances/Overlays/AB_Als_Rifle"));
+	if (RifleOverlayAnimationClassFinder.Succeeded())
+	{
+		RifleOverlayAnimationClass = RifleOverlayAnimationClassFinder.Class;
+	}
 }
 
 void AStealthAlsGuard::BeginPlay()
 {
 	Super::BeginPlay();
+
+	SetActorTickEnabled(true);
+	RefreshOverlayAnimationLayer();
 }
 
 void AStealthAlsGuard::Tick(float DeltaTime)
@@ -45,22 +67,35 @@ void AStealthAlsGuard::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
+void AStealthAlsGuard::OnOverlayModeChanged_Implementation(FGameplayTag PreviousOverlayMode)
+{
+	Super::OnOverlayModeChanged_Implementation(PreviousOverlayMode);
+
+	RefreshOverlayAnimationLayer();
+}
+
 FString AStealthAlsGuard::GetDebugBrainLine() const
 {
-	return GuardBrain ? GuardBrain->GetDebugBrainLine() : FString(TEXT("Brain: --"));
+	if (const UStealthGuardBrainComponent* ActiveBrain = FindActiveGuardBrain())
+	{
+		return ActiveBrain->GetDebugBrainLine();
+	}
+
+	return FString(TEXT("Brain: --"));
 }
 
 void AStealthAlsGuard::ApplyAlsLocomotionPresentation()
 {
-	if (!GuardBrain)
+	const UStealthGuardBrainComponent* ActiveBrain = FindActiveGuardBrain();
+	if (!ActiveBrain)
 	{
 		return;
 	}
 
-	switch (GuardBrain->Brain.Mode)
+	switch (ActiveBrain->Brain.Mode)
 	{
 	case EGuardBrainMode::Chase:
-		SetDesiredGait(AlsGaitTags::Sprinting);
+		SetDesiredGait(AlsGaitTags::Running);
 		break;
 	case EGuardBrainMode::Investigate:
 		SetDesiredGait(AlsGaitTags::Running);
@@ -77,5 +112,81 @@ void AStealthAlsGuard::ApplyAlsLocomotionPresentation()
 
 	const float Speed2D = GetVelocity().Size2D();
 	const bool bMoving = Speed2D > 10.f;
-	SetDesiredRotationMode(bMoving ? AlsRotationModeTags::VelocityDirection : AlsRotationModeTags::ViewDirection);
+	const bool bChasing = ActiveBrain->Brain.Mode == EGuardBrainMode::Chase;
+
+	SetOverlayMode(bChasing ? AlsOverlayModeTags::Rifle : AlsOverlayModeTags::Default);
+	SetDesiredAiming(bChasing);
+	SetDesiredRotationMode(bChasing
+		? AlsRotationModeTags::Aiming
+		: (bMoving ? AlsRotationModeTags::VelocityDirection : AlsRotationModeTags::ViewDirection));
+}
+
+void AStealthAlsGuard::RefreshOverlayAnimationLayer()
+{
+	if (!GetMesh())
+	{
+		return;
+	}
+
+	TSubclassOf<UAnimInstance> OverlayAnimationClass;
+	if (GetOverlayMode() == AlsOverlayModeTags::Rifle)
+	{
+		OverlayAnimationClass = RifleOverlayAnimationClass;
+	}
+	else if (GetOverlayMode() == AlsOverlayModeTags::Default)
+	{
+		OverlayAnimationClass = DefaultOverlayAnimationClass;
+	}
+
+	GetMesh()->LinkAnimClassLayers(OverlayAnimationClass.Get());
+}
+
+UStealthGuardBrainComponent* AStealthAlsGuard::FindActiveGuardBrain() const
+{
+	TArray<UStealthGuardBrainComponent*> BrainComponents;
+	GetComponents<UStealthGuardBrainComponent>(BrainComponents);
+
+	UStealthGuardBrainComponent* BestBrain = GuardBrain;
+	float BestScore = BestBrain ? -1.f : -1000000.f;
+
+	for (UStealthGuardBrainComponent* BrainComponent : BrainComponents)
+	{
+		if (!BrainComponent)
+		{
+			continue;
+		}
+
+		float Score = 0.f;
+		if (BrainComponent->IsRegistered())
+		{
+			Score += 1000.f;
+		}
+		if (BrainComponent->IsComponentTickEnabled())
+		{
+			Score += 100.f;
+		}
+		if (BrainComponent->Suspicion.bHadVisualStimulus)
+		{
+			Score += 50.f;
+		}
+		if (BrainComponent->Brain.Mode == EGuardBrainMode::Chase)
+		{
+			Score += 25.f;
+		}
+
+		Score += BrainComponent->Suspicion.Value;
+
+		if (BrainComponent == GuardBrain)
+		{
+			Score += 1.f;
+		}
+
+		if (!BestBrain || Score > BestScore)
+		{
+			BestBrain = BrainComponent;
+			BestScore = Score;
+		}
+	}
+
+	return BestBrain;
 }
