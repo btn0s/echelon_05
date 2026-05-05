@@ -27,7 +27,7 @@ AStealthAlsGuard::AStealthAlsGuard(const FObjectInitializer& ObjectInitializer)
 	GuardStatusWidget->SetRelativeLocation(FVector(0.f, 0.f, 155.f));
 	GuardStatusWidget->SetWidgetClass(UStealthGuardStatusWidget::StaticClass());
 	GuardStatusWidget->SetWidgetSpace(EWidgetSpace::Screen);
-	GuardStatusWidget->SetDrawSize(FVector2D(260.f, 64.f));
+	GuardStatusWidget->SetDrawSize(FVector2D(260.f, 72.f));
 	GuardStatusWidget->SetDrawAtDesiredSize(false);
 	GuardStatusWidget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GuardStatusWidget->SetGenerateOverlapEvents(false);

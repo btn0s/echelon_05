@@ -85,9 +85,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LightSampling", meta = (ClampMin = 0, ClampMax = 1))
 	float SceneLightAmbientExposure = 0.06f;
 
-	/** Raw summed contributions are divided by this before saturating to roughly 0..1 (tweak per level brightness). */
+	/** Raw summed contributions are divided by this before saturating to roughly 0..1 (tweak per level brightness).
+	 *  Calibrate against the actual Intensity values of the scene's key lights. For physically-based lumen-scale lights
+	 *  (~100 000 lm) use ~180 000. For low-range UE default units (800–2500) use ~1 500. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LightSampling", meta = (ClampMin = 1))
-	float SceneLightIntensityNormalization = 180000.f;
+	float SceneLightIntensityNormalization = 1500.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LightSampling", meta = (ClampMin = 0, ClampMax = 1))
 	float SceneLightDirectionalExposureScale = 1.f;
