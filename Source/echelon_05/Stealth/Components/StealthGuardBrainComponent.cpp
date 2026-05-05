@@ -147,19 +147,33 @@ void UStealthGuardBrainComponent::UpdatePerceptionAndSuspicion(float DeltaTime, 
 
 		if (bSeePlayer)
 		{
-			const float Vis = Sim->GetPlayerVisibility().CurrentVisibility;
-			const float Stim = VisualStrength * Vis * (Tuning ? Tuning->VisualStimulusPerSecond : 35.f) * DeltaTime;
+			const FVisibilityEmitter Visibility = Sim->GetPlayerVisibility();
+			const float Vis = Visibility.CurrentVisibility;
+			const float LightThreshold = Tuning ? Tuning->BrightLightSuspicionThreshold : 0.65f;
+			const float LightAlpha = FMath::Clamp((Visibility.LightExposure - LightThreshold) /
+				FMath::Max(1.f - LightThreshold, KINDA_SMALL_NUMBER), 0.f, 1.f);
+			const float LightMultiplier = FMath::Lerp(1.f, Tuning ? Tuning->BrightLightSuspicionMultiplier : 3.f, LightAlpha);
+			const float Stim = VisualStrength * Vis * LightMultiplier *
+				(Tuning ? Tuning->VisualStimulusPerSecond : 35.f) * DeltaTime;
 			Suspicion.Value = FMath::Clamp(Suspicion.Value + Stim, 0.f, 100.f);
-			Suspicion.LastReason = FString::Printf(TEXT("Seen (vis=%.2f)"), Vis);
+			Suspicion.LastReason = FString::Printf(TEXT("Seen (vis=%.2f light=%.2f x%.1f)"), Vis,
+				Visibility.LightExposure, LightMultiplier);
 		}
 
 		if (bHear && !bSeePlayer)
 		{
-			const float Stim = AudioStrength * (Tuning ? Tuning->AudioStimulusPerSecond : 25.f) * DeltaTime;
+			const float SoundThreshold = Tuning ? Tuning->LoudSoundSuspicionThreshold : 0.7f;
+			const float SoundAlpha = FMath::Clamp((AudioStrength - SoundThreshold) /
+				FMath::Max(1.f - SoundThreshold, KINDA_SMALL_NUMBER), 0.f, 1.f);
+			const float SoundMultiplier = FMath::Lerp(1.f, Tuning ? Tuning->LoudSoundSuspicionMultiplier : 2.5f,
+				SoundAlpha);
+			const float Stim = AudioStrength * SoundMultiplier *
+				(Tuning ? Tuning->AudioStimulusPerSecond : 25.f) * DeltaTime;
 			Suspicion.Value = FMath::Clamp(Suspicion.Value + Stim, 0.f, 100.f);
 			if (Suspicion.LastReason.IsEmpty())
 			{
-				Suspicion.LastReason = TEXT("Heard noise");
+				Suspicion.LastReason = FString::Printf(TEXT("Heard noise (strength=%.2f x%.1f)"), AudioStrength,
+					SoundMultiplier);
 			}
 		}
 	}
@@ -207,6 +221,8 @@ void UStealthGuardBrainComponent::RefreshSuspicionBucket(const UStealthTuningDat
 
 	if (NewState == EGuardSuspicionState::Alert)
 	{
+		bCombatLocked = true;
+
 		if (UStealthSimulationSubsystem* Sim = GetWorld()->GetSubsystem<UStealthSimulationSubsystem>())
 		{
 			Sim->MarkAlertOccurred();
@@ -222,6 +238,12 @@ void UStealthGuardBrainComponent::RefreshSuspicionBucket(const UStealthTuningDat
 void UStealthGuardBrainComponent::UpdateBrainMode(UStealthSimulationSubsystem* Sim)
 {
 	(void)Sim;
+
+	if (bCombatLocked)
+	{
+		Brain.Mode = EGuardBrainMode::Chase;
+		return;
+	}
 
 	switch (Suspicion.State)
 	{
@@ -265,8 +287,9 @@ void UStealthGuardBrainComponent::ApplyStealthMovement(AAIController* AI, float 
 		const FVector OwnerLocation = OwnerPawn->GetActorLocation();
 		const FVector PlayerLocation = PlayerPawn->GetActorLocation();
 		const float DistanceToPlayer2D = FVector::Dist2D(OwnerLocation, PlayerLocation);
+		const bool bHasLineOfSight = Suspicion.bHadVisualStimulus;
 
-		if (DistanceToPlayer2D < CombatMinimumDistance)
+		if (bHasLineOfSight && DistanceToPlayer2D < CombatMinimumDistance)
 		{
 			FVector AwayFromPlayer = OwnerLocation - PlayerLocation;
 			AwayFromPlayer.Z = 0.f;
@@ -292,7 +315,7 @@ void UStealthGuardBrainComponent::ApplyStealthMovement(AAIController* AI, float 
 			return;
 		}
 
-		if (DistanceToPlayer2D <= CombatMaximumDistance)
+		if (bHasLineOfSight && DistanceToPlayer2D <= CombatMaximumDistance)
 		{
 			AI->StopMovement();
 			return;
@@ -300,7 +323,8 @@ void UStealthGuardBrainComponent::ApplyStealthMovement(AAIController* AI, float 
 
 		if (Now - LastMoveRequestTime >= MoveRequestMinInterval)
 		{
-			AI->MoveToActor(PlayerPawn, CombatPreferredDistance, true, true, true, 0, true);
+			AI->MoveToActor(PlayerPawn, bHasLineOfSight ? CombatPreferredDistance : MoveToAcceptanceRadius, true, true,
+				true, 0, true);
 			LastMoveRequestTime = Now;
 		}
 		return;
@@ -485,7 +509,7 @@ bool UStealthGuardBrainComponent::ComputeAuditoryStimulus(const UStealthSimulati
 
 FString UStealthGuardBrainComponent::GetDebugBrainLine() const
 {
-	return FString::Printf(TEXT("Brain=%d Sus=%.0f State=%d See=%d Hear=%d | %s"), static_cast<int32>(Brain.Mode),
-		Suspicion.Value, static_cast<int32>(Suspicion.State), Suspicion.bHadVisualStimulus ? 1 : 0,
-		Suspicion.bHadAuditoryStimulus ? 1 : 0, *Suspicion.LastReason);
+	return FString::Printf(TEXT("Brain=%d Sus=%.0f State=%d Combat=%d See=%d Hear=%d | %s"),
+		static_cast<int32>(Brain.Mode), Suspicion.Value, static_cast<int32>(Suspicion.State), bCombatLocked ? 1 : 0,
+		Suspicion.bHadVisualStimulus ? 1 : 0, Suspicion.bHadAuditoryStimulus ? 1 : 0, *Suspicion.LastReason);
 }

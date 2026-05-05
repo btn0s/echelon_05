@@ -40,6 +40,9 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Stealth")
 	FGuardBrain Brain;
 
+	UPROPERTY(BlueprintReadOnly, Category = "Stealth")
+	bool bCombatLocked = false;
+
 	/** When true, ApplyStealthMovement is driven by BT task (StealthAls); Tick only updates perception/brain mode. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
 	bool bMovementAppliedByBehaviorTreeTask = false;

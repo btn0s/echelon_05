@@ -87,6 +87,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 0))
 	float AudioStimulusPerSecond = 25.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 1))
+	float BrightLightSuspicionMultiplier = 3.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 0, ClampMax = 1))
+	float BrightLightSuspicionThreshold = 0.65f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 1))
+	float LoudSoundSuspicionMultiplier = 2.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 0, ClampMax = 1))
+	float LoudSoundSuspicionThreshold = 0.7f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adapter", meta = (ClampMin = 0))
 	float IdleSpeedThreshold = 10.f;
 };
