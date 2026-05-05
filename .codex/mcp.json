@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ue-mcp": {
+      "command": "npx",
+      "args": [
+        "ue-mcp",
+        "C:/Users/CEL/Documents/Unreal Projects/echelon_05/echelon_05.uproject"
+      ]
+    }
+  }
+}
