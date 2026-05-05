@@ -12,4 +12,9 @@ class AStealthDebugHUD : public AHUD
 
 public:
 	virtual void DrawHUD() override;
+
+private:
+	// Session high-water marks for VIS / NSE peak ticks on bars.
+	float PeakVis01   = 0.f;
+	float PeakNoise01 = 0.f;
 };
