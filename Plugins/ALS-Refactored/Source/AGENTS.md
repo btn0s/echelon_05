@@ -2,7 +2,7 @@
 
 Start with **[`../SYSTEM_MAP.md`](../SYSTEM_MAP.md)** — plugin-wide architecture and flows.
 
-**Packaged assets:** **[`../Content/AGENTS.md`](../Content/AGENTS.md)** — levels, input actions, starter AI assets under **`../Content/`** as binary **`*.uasset` / `*.umap`**. Inner Blueprint / AnimBP / BT graphs are Editor-only evidence (not text in the repo).
+**Packaged assets:** **[`../Content/AGENTS.md`](../Content/AGENTS.md)** — levels, input actions, starter AI assets under **`../Content/`** as binary **`*.uasset` / `*.umap`**. Blueprint / AnimBP / Widget graph summaries can be inspected through UE-MCP package paths under `/ALS`; they are still not text in the repo, and BT/BB semantics may need Editor inspection.
 
 ## Module → folder
 

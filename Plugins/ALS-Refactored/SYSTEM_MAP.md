@@ -10,10 +10,10 @@
 
 | Tag | Meaning |
 |-----|---------|
-| **Verified (plugin tree)** | Observable under this plugin folder (`.h/.cpp`, `Config/`, [`ALS.uplugin`](ALS.uplugin), [`README.md`](README.md)). [`Content/`](Content/) holds packaged `.uasset` / `.umap` files (**binaries on disk**): folder layout and filenames are observable; **graphs inside assets**, map wiring, and **World Partition** cells under `__ExternalActors__` / `__ExternalObjects__` are **not** readable as text here. |
+| **Verified (plugin tree)** | Observable under this plugin folder (`.h/.cpp`, `Config/`, [`ALS.uplugin`](ALS.uplugin), [`README.md`](README.md)). [`Content/`](Content/) holds packaged `.uasset` / `.umap` files (**binaries on disk**): folder layout and filenames are observable; Blueprint / AnimBP / Widget graph summaries are inspectable through UE-MCP when the editor bridge is live, but are **not** readable as text in git. Map wiring, deep defaults, and World Partition cells under `__ExternalActors__` / `__ExternalObjects__` remain binary asset evidence. |
 | **Verified (upstream README)** | Stated in [`README.md`](README.md); upstream *intent*, not guaranteed by assets absent from your tree. |
 | **Inferred (code)** | Deduction justified by cited sources. |
-| **Gap** | Needs Unreal Editor, `.uasset` / `.umap`, or binaries not tracked as text here. |
+| **Gap** | Needs Unreal Editor, focused UE-MCP property/graph reads, `.uasset` / `.umap`, or binaries not tracked as text here. |
 
 ---
 
@@ -21,7 +21,7 @@
 
 ALS Refactored provides a **Gameplay Tag–driven** third-person locomotion stack: **`AAlsCharacter`** coordinates tick-time refreshes (**view**, **locomotion**, **mantling / ragdoll / rolling**), **`UAlsCharacterMovementComponent`** extends UE movement with ALS-specific prediction fields and gait/rotation tags, **`UAlsAnimationInstance`** mirrors character state into animation/Control Rig consumers (including **worker-thread** update path), **`UAlsCameraComponent`** supplies a mesh-attached traced third-person camera, and **ALSExtras** ships **`AAlsCharacterExample`** (Enhanced Input sample) plus **`AAlsAIController`** (Behavior Tree runner). **`ALSEditor`** adds uncooked authoring helpers.
 
-**Verified (plugin tree):** This checkout includes **`Content/`** with hundreds of Unreal assets (animations, input actions, audio, sample levels, AI blackboard/controller assets, etc.). **Gap:** Blueprint/AnimBP/Behavior Tree **graph logic** and Data Asset row semantics are still **Editor / manual inspection** tasks — agents should not invent node wiring from filenames alone.
+**Verified (plugin tree + UE-MCP):** This checkout includes **`Content/`** with hundreds of Unreal assets (animations, input actions, audio, sample levels, AI blackboard/controller assets, etc.). UE-MCP can read Blueprint / AnimBP graph names, node counts, and many node-edge summaries for known `/ALS/...` package paths. **Gap:** Behavior Tree / Blackboard semantics, Data Asset row semantics, deep class defaults, and graph details that time out are still focused UE-MCP or Editor inspection tasks — agents should not invent node wiring from filenames alone.
 
 ---
 
@@ -40,7 +40,7 @@ ALS Refactored provides a **Gameplay Tag–driven** third-person locomotion stac
 
 ### 2.1 Packaged Unreal content (`Content/`)
 
-**Verified (plugin tree — layout + examples, not inner graphs):**
+**Verified (plugin tree + UE-MCP — layout + selected graph summaries):**
 
 | subtree | Examples (filenames only) |
 |---------|---------------------------|
@@ -51,6 +51,16 @@ ALS Refactored provides a **Gameplay Tag–driven** third-person locomotion stac
 World Partition external actor/object payload folders (`Content/__ExternalActors__`, `Content/__ExternalObjects__`) nest under **`ALSExtras/Levels/`** paths for those maps.
 
 Navigation for agents: [`Content/AGENTS.md`](Content/AGENTS.md).
+
+UE package path note: plugin content is mounted as `/ALS`, so `Content/ALS/Character/B_Als_Character.uasset` is read as `/ALS/ALS/Character/B_Als_Character`.
+
+### 2.2 Blueprint behavior verified through UE-MCP
+
+`B_Als_Character` subclasses `AAlsCharacterExample` and handles overlay presentation around the C++ locomotion core. On begin play and overlay-mode changes it refreshes the visible overlay object; on overlay-mode changes it also refreshes linked animation layers. It switches by overlay gameplay tag to attach rifle, pistol, bow, torch, binoculars, box, or barrel objects, otherwise clearing overlay static/skeletal meshes. Mantling and ragdoll start clear overlay objects; ending those actions refreshes them.
+
+Linked AnimBPs split ALS animation behavior into layers: `AB_Als` is the main animation instance, `AB_Als_Locomotion` handles grounded/fall/jump/land flow, `AB_Als_Grounded` handles grounded stance/roll transitions, standing/crouching stances handle movement details, `AB_Als_Layering` handles large pose-layering output, and overlay AnimBPs provide gameplay-tag-specific pose layers and weapon/object state machines.
+
+ALSExtras sample behavior is also Blueprint-readable: `B_Als_PlayerController` creates HUD/menu widgets, adds the ALSExtras input mapping, toggles UI, opens/closes the overlay menu, handles next/previous overlay selection while the menu is visible, and toggles slomo via global time dilation. Environment sample actors are deterministic from server time plus ping: moving objects sample a spline/curve; rotating objects scale rotation speed by shared time. AI task Blueprints focus the player or write a random reachable nav location into the blackboard.
 
 ---
 
@@ -129,7 +139,7 @@ Central pawn authority: replicated **desired** tags (stance, gait, rotation mode
 
 - **`NativeUpdateAnimation`:** Copies character tags/state; refreshes movement base / view / locomotion / in-air / feet / ragdoll on game thread; teleport threshold vs `TeleportDistanceThreshold`.
 - **`NativeThreadSafeUpdateAnimation`:** Parallel evaluation path (**also stated in README**).
-- **`GetControlRigInput()`**: feeds Control Rig; graph wiring **Gap** without authored assets.
+- **`GetControlRigInput()`**: feeds Control Rig; authored AnimBP graphs are partially inspectable through UE-MCP graph lists/summaries, but detailed RigVM / Control Rig behavior remains a focused asset-inspection task.
 
 **Gameplay tags:** [`Source/ALS/Public/Utility/AlsGameplayTags.h`](Source/ALS/Public/Utility/AlsGameplayTags.h) declares view/locomotion/gait/stance/overlay/action tag namespaces used across C++ & content.
 
@@ -163,7 +173,7 @@ Central pawn authority: replicated **desired** tags (stance, gait, rotation mode
 - Registers **`InputMappingContext`** on `NotifyControllerChanged` via **`UEnhancedInputLocalPlayerSubsystem`**.
 - **`Input_OnJump`:** `StopRagdolling` → `StartMantling` → uncrouch stance → `Jump()` priority order.
 
-**Verified:** `UInputAction` / `UInputMappingContext` assets exist under this plugin (**e.g.** `Content/ALS/Data/Input/IA_Als_*.uasset`, `Content/ALSExtras/Data/Input/`). **Gap:** Which assets are wired on **`AAlsCharacterExample`** (or subclasses) lives in Blueprint/class defaults inside `.uasset` files — verify in Editor, do not infer from filenames alone.
+**Verified:** `UInputAction` / `UInputMappingContext` assets exist under this plugin (**e.g.** `Content/ALS/Data/Input/IA_Als_*.uasset`, `Content/ALSExtras/Data/Input/`). **UE-MCP evidence:** `B_Als_PlayerController` binds ALSExtras input actions for overlay menu navigation, UI toggle, and slomo. **Gap:** `AAlsCharacterExample` subclass defaults and exact asset assignments should be verified with focused UE-MCP property reads or Editor inspection, not inferred from filenames alone.
 
 ---
 
@@ -171,7 +181,7 @@ Central pawn authority: replicated **desired** tags (stance, gait, rotation mode
 
 **Verified:** [`Source/ALSExtras/Private/AlsAIController.cpp`](Source/ALSExtras/Private/AlsAIController.cpp) — **`RunBehaviorTree(BehaviorTree)`** on possess; **`GetFocalPointOnActor`** favors pawn view location.
 
-**Verified:** Companion assets exist under **`Content/ALSExtras/AI/`** (e.g. `AIC_Als.uasset`, `BB_Als.uasset`). **Gap:** **`UBehaviorTree` graph** assigned on the controller + blackboard key semantics are **binary** — open in Editor; do not infer from filenames.
+**Verified:** Companion assets exist under **`Content/ALSExtras/AI/`** (e.g. `AIC_Als.uasset`, `BB_Als.uasset`). **UE-MCP evidence:** `AIC_Als` subclasses `AAlsAIController`; `BTT_Als_GetRandomLocationInRadius` writes a reachable nav point into a blackboard vector; `BTT_Als_FocusPlayer` sets AI focus to the player pawn. **Gap:** `BT_Als` behavior tree wiring and `BB_Als` key semantics are binary asset evidence — inspect in Editor or with a dedicated BT/BB tool if available.
 
 ---
 
@@ -203,7 +213,7 @@ Designer-facing **`U*Settings`** objects (`Source/ALS/Public/Settings/`) referen
 4. Author ALS-compatible skeleton (README: scripted skeleton action), linked animation layers / Control Rig per upstream guidance.
 5. Keep **`Plugins/ALS-Refactored/Config/Engine.ini`** behaviors in mind if replicating networked mantling + push model.
 
-Detailed AnimBP/Rig graphs: **Gap** here.
+Detailed AnimBP/Rig graphs: use UE-MCP graph lists/summaries first; remaining graph details, RigVM internals, and deep defaults are **Gap** here.
 
 ---
 
@@ -230,7 +240,7 @@ flowchart TB
 
   subgraph sample [ALSExtras]
     ex[AAlsCharacterExample]
-    eis[EnhancedInput_CDO_wiring_gap]
+    eis[EnhancedInput_BP_wiring_partial]
     cam[UAlsCameraComponent]
     aiCtrl[AAlsAIController]
     btAsset[BehaviorTree_asset_gap]
@@ -263,10 +273,10 @@ flowchart TB
 
 Inspect in Editor when migrating or debugging:
 
-1. **AnimBP / Control Rig graphs** referencing `UAlsAnimationInstance`, linked layering, IK targets — filenames exist under `Content/ALS/` but **graphs require Editor**.
-2. **AI Behavior Tree + Blackboard graphs** wired to **`AIC_Als` / `BB_Als`** (`Content/ALSExtras/AI/`).
+1. **AnimBP / Control Rig details** referencing `UAlsAnimationInstance`, linked layering, IK targets — UE-MCP can list/read many graphs, but full RigVM semantics and graph details that time out still need focused asset inspection.
+2. **AI Behavior Tree + Blackboard graphs** wired to **`AIC_Als` / `BB_Als`** (`Content/ALSExtras/AI/`) — task Blueprints are readable, but BT/BB semantics remain a gap.
 3. **`DefaultObject` tweaks** on `UAlsCharacterSettings` / `UAlsMovementSettings` / animation settings assets.
-4. Layered AnimBP linkage to **`UAlsLinkedAnimationInstance`** (if using linked graphs per README).
+4. Exact class-default asset assignments for linked AnimBP layers and Enhanced Input contexts where not captured by graph summaries.
 
 ---
 
