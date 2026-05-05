@@ -15,7 +15,7 @@
 static TAutoConsoleVariable<int32> CVarStealthGuardDebugDrawBrain(
 	TEXT("stealth.DebugDraw"),
 	0,
-	TEXT("When non-zero, draws stealth debug primitives (guard cone, etc.)."),
+	TEXT("When non-zero, draws stealth debug primitives (guard cone, hearing sphere, scene-light samples/rays)."),
 	ECVF_Default);
 
 static float GetSoundEvidencePoints(const UStealthTuningDataAsset* Tuning, EStealthSoundSource SourceType)

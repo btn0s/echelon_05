@@ -97,6 +97,74 @@ struct FVisibilityEmitter
 	float ActionMultiplier = 1.f;
 };
 
+/** Single scene light contribution toward one body sample (debug / HUD). */
+USTRUCT(BlueprintType)
+struct FStealthLightContributionDebug
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	FString LightLabel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	FString LightClassName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth", meta = (ClampMin = 0, ClampMax = 1))
+	float Contribution = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	bool bOccluded = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth", meta = (ClampMin = 0))
+	float DistanceFromSample = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	FVector LightWorldLocation = FVector::ZeroVector;
+};
+
+/** One body sample point after scene-light evaluation. */
+USTRUCT(BlueprintType)
+struct FStealthBodyLightSampleDebug
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	FString SampleName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	FVector WorldPosition = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth", meta = (ClampMin = 0, ClampMax = 1))
+	float Exposure = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	TArray<FStealthLightContributionDebug> Contributions;
+};
+
+/** Aggregate debug for TH-517 scene-light body sampling (HUD + optional debug draw). */
+USTRUCT(BlueprintType)
+struct FStealthLightSamplingDebug
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	TArray<FStealthBodyLightSampleDebug> BodySamples;
+
+	/** Max exposure across body samples before smoothing. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth", meta = (ClampMin = 0, ClampMax = 1))
+	float RawMaxExposure = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth", meta = (ClampMin = 0, ClampMax = 1))
+	float SmoothedExposure = 0.f;
+
+	/** Value fed into visibility after smoothing (same as SmoothedExposure when smoothing enabled). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth", meta = (ClampMin = 0, ClampMax = 1))
+	float FinalExposure = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	int32 CachedLightCount = 0;
+};
+
 USTRUCT(BlueprintType)
 struct FSoundEmitter
 {

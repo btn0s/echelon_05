@@ -6,7 +6,7 @@
 #include "StealthEmitterComponent.generated.h"
 
 /**
- * Derives visibility and movement noise from player state + stealth light volumes (via subsystem).
+ * Derives visibility and movement noise from player state + scene-light body sampling (via subsystem).
  */
 UCLASS(ClassGroup = (Stealth), meta = (BlueprintSpawnableComponent))
 class UStealthEmitterComponent : public UActorComponent

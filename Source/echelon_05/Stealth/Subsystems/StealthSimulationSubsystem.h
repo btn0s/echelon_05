@@ -11,6 +11,7 @@
 class AStealthLightVolume;
 class UStealthGuardBrainComponent;
 class UStealthTuningDataAsset;
+class ULightComponentBase;
 
 USTRUCT(BlueprintType)
 struct FStealthAlsDebugSnapshot
@@ -142,7 +143,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Stealth")
 	void SetMissionOutcome(EStealthMissionOutcome Outcome);
 
-	float SampleLightExposureAt(const FVector& WorldLocation) const;
+	/** Scene-light sampling at one world position (no stealth volumes). Legacy helper / debug. */
+	float SampleLightExposureAt(const FVector& WorldLocation, const AActor* OcclusionIgnoreActor = nullptr);
+
+	/** TH-517: sample multiple body points, max-bias blend, temporal smoothing; fills LastLightSamplingDebug. */
+	float SampleBodyLightExposureMaxBias(const TArray<FVector>& BodyWorldPositions, const TArray<FString>& BodyLabels,
+		const AActor* OcclusionIgnoreActor, float DeltaTime);
+
+	UFUNCTION(BlueprintPure, Category = "Stealth")
+	FStealthLightSamplingDebug GetLastLightSamplingDebug() const { return LastLightSamplingDebug; }
+
 	TArray<TWeakObjectPtr<AStealthLightVolume>> GetRegisteredLightVolumes() const { return LightVolumes; }
 
 	TArray<TWeakObjectPtr<UStealthGuardBrainComponent>> GetRegisteredGuardBrains() const { return GuardBrains; }
@@ -156,6 +166,9 @@ public:
 private:
 	void ExpireSoundEvents(float WorldTimeSeconds);
 	void RefreshObjectiveExtractionGating();
+	void RefreshSceneLightCache(float WorldTimeSeconds);
+	float ComputeSceneLightExposureAt(const FVector& SampleWorldPosition, const AActor* OcclusionIgnoreActor,
+		TArray<FStealthLightContributionDebug>* OutSortedContributions) const;
 
 	UPROPERTY()
 	TObjectPtr<UStealthTuningDataAsset> TuningAsset;
@@ -171,7 +184,12 @@ private:
 	int32 NextSoundEventId = 1;
 
 	TArray<TWeakObjectPtr<AStealthLightVolume>> LightVolumes;
+	TArray<TWeakObjectPtr<ULightComponentBase>> CachedSceneLights;
 	TArray<TWeakObjectPtr<UStealthGuardBrainComponent>> GuardBrains;
+
+	float LastSceneLightCacheTime = -100000.f;
+	float PlayerSmoothedLightExposure = 0.f;
+	FStealthLightSamplingDebug LastLightSamplingDebug;
 
 	FObjectiveState ObjectiveState;
 	FExtractionState ExtractionState;

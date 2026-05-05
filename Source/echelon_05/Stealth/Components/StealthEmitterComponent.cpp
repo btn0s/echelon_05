@@ -3,6 +3,9 @@
 #include "Stealth/Data/StealthTuningDataAsset.h"
 #include "Stealth/Subsystems/StealthSimulationSubsystem.h"
 
+#include "DrawDebugHelpers.h"
+#include "HAL/IConsoleManager.h"
+#include "Components/CapsuleComponent.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
 
@@ -16,6 +19,51 @@ void UStealthEmitterComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	UpdateEmissions(DeltaTime);
+
+	int32 DebugDrawValue = 0;
+	if (IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("stealth.DebugDraw")))
+	{
+		DebugDrawValue = CVar->GetInt();
+	}
+	if (DebugDrawValue <= 0)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	AActor* Owner = GetOwner();
+	if (!World || !Owner)
+	{
+		return;
+	}
+
+	if (UStealthSimulationSubsystem* Sim = World->GetSubsystem<UStealthSimulationSubsystem>())
+	{
+		const FStealthLightSamplingDebug LDebug = Sim->GetLastLightSamplingDebug();
+		const FVector TraceOffset = FVector(0.f, 0.f, 12.f);
+		for (const FStealthBodyLightSampleDebug& Pt : LDebug.BodySamples)
+		{
+			DrawDebugSphere(World, Pt.WorldPosition + TraceOffset, 10.f, 10, FColor::Cyan, false, -1.f, 0, 1.f);
+			DrawDebugString(World, Pt.WorldPosition + TraceOffset + FVector(0.f, 0.f, 28.f),
+				FString::Printf(TEXT("%s %.2f"), *Pt.SampleName, Pt.Exposure), nullptr, FColor::White, 0.f, true, 1.f);
+
+			for (const FStealthLightContributionDebug& C : Pt.Contributions)
+			{
+				const FColor RayColor = C.bOccluded ? FColor::Red : FColor::Green;
+				DrawDebugLine(World, Pt.WorldPosition + TraceOffset, C.LightWorldLocation, RayColor, false, -1.f, 0, 1.f);
+				DrawDebugString(World, C.LightWorldLocation,
+					FString::Printf(TEXT("%s %s %.2f%s"), *C.LightLabel, *C.LightClassName, C.Contribution,
+						C.bOccluded ? TEXT(" (blk)") : TEXT("")),
+					nullptr, RayColor, 0.f, true, 0.65f);
+			}
+		}
+
+		const FVector HUDAnchor = Owner->GetActorLocation() + FVector(0.f, 0.f, 110.f);
+		DrawDebugString(World, HUDAnchor,
+			FString::Printf(TEXT("SceneLight exp=%.2f max=%.2f smooth=%.2f | cachedLights=%d"), LDebug.FinalExposure,
+				LDebug.RawMaxExposure, LDebug.SmoothedExposure, LDebug.CachedLightCount),
+			nullptr, FColor::Yellow, 0.f, true, 1.15f);
+	}
 }
 
 void UStealthEmitterComponent::UpdateEmissions(float DeltaTime)
@@ -43,7 +91,28 @@ void UStealthEmitterComponent::UpdateEmissions(float DeltaTime)
 	const FStealthMovementState Move = Sim->GetPlayerMovement();
 	const FStealthBodyState Body = Sim->GetPlayerBody();
 
-	float LightExposure = Sim->SampleLightExposureAt(SampleLocation);
+	const FTransform Xform = Owner->GetActorTransform();
+	TArray<FVector> BodyPts;
+	if (const UCapsuleComponent* Capsule = Owner->FindComponentByClass<UCapsuleComponent>())
+	{
+		const FVector CapsuleCenter = Capsule->GetComponentLocation();
+		const FVector Up = Capsule->GetUpVector();
+		const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+
+		BodyPts.Add(CapsuleCenter + Up * (HalfHeight * 0.65f) + Xform.TransformVector(Tuning->HeadSampleOffsetLocal));
+		BodyPts.Add(CapsuleCenter + Xform.TransformVector(Tuning->ChestSampleOffsetLocal));
+		BodyPts.Add(CapsuleCenter - Up * (HalfHeight * 0.75f) + Xform.TransformVector(Tuning->FeetSampleOffsetLocal));
+	}
+	else
+	{
+		BodyPts.Add(Xform.TransformPosition(Tuning->HeadSampleOffsetLocal));
+		BodyPts.Add(Xform.TransformPosition(Tuning->ChestSampleOffsetLocal));
+		BodyPts.Add(Xform.TransformPosition(Tuning->FeetSampleOffsetLocal));
+	}
+
+	TArray<FString> BodyLabels = {TEXT("Head"), TEXT("Chest"), TEXT("Feet")};
+	const float LightExposure =
+		Sim->SampleBodyLightExposureMaxBias(BodyPts, BodyLabels, Owner, DeltaTime);
 
 	float StanceMul = Move.Stance == EStealthStance::Crouching ? Tuning->CrouchingMultiplier : Tuning->StandingMultiplier;
 
@@ -79,8 +148,8 @@ void UStealthEmitterComponent::UpdateEmissions(float DeltaTime)
 	Vis.MovementMultiplier = MoveMul;
 	Vis.ActionMultiplier = ActionMul;
 	Vis.SilhouetteExposure = 0.f;
-	Vis.CurrentVisibility =
-		FMath::Clamp(Tuning->BaseVisibility * StanceMul * MoveMul * ActionMul * LightExposure, 0.f, 1.f);
+	const float MultipliedVisibility = Tuning->BaseVisibility * StanceMul * MoveMul * ActionMul * LightExposure;
+	Vis.CurrentVisibility = FMath::Clamp(FMath::Max(LightExposure, MultipliedVisibility), 0.f, 1.f);
 
 	float NoiseRadius = Tuning->WalkNoiseRadius;
 	switch (Move.Locomotion)

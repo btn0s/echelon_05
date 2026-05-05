@@ -60,6 +60,21 @@ void AStealthDebugHUD::DrawHUD()
 	LineR(FString::Printf(TEXT("ViewYawRate: %.1f"), Sim->GetPlayerView().ViewYawSpeed));
 	LineR(FString::Printf(TEXT("Visibility: %.2f (LExp %.2f x St %.2f x Mv %.2f x Act %.2f)"), Vis.CurrentVisibility,
 		Vis.LightExposure, Vis.StanceMultiplier, Vis.MovementMultiplier, Vis.ActionMultiplier));
+
+	const FStealthLightSamplingDebug Ls = Sim->GetLastLightSamplingDebug();
+	LineR(FString::Printf(TEXT("SceneLight: final=%.2f max=%.2f sm=%.2f lights=%d"), Ls.FinalExposure, Ls.RawMaxExposure,
+		Ls.SmoothedExposure, Ls.CachedLightCount));
+	for (const FStealthBodyLightSampleDebug& Pt : Ls.BodySamples)
+	{
+		LineR(FString::Printf(TEXT("  %s: %.2f"), *Pt.SampleName, Pt.Exposure));
+		const int32 MaxC = FMath::Min(2, Pt.Contributions.Num());
+		for (int32 Ci = 0; Ci < MaxC; ++Ci)
+		{
+			const FStealthLightContributionDebug& C = Pt.Contributions[Ci];
+			LineR(FString::Printf(TEXT("    %s %.2f%s"), *C.LightLabel, C.Contribution, C.bOccluded ? TEXT(" occl") : TEXT("")));
+		}
+	}
+
 	LineR(FString::Printf(TEXT("Noise radius: %.0f"), Snd.Radius));
 
 	const TArray<FStealthSoundEvent> Events = Sim->GetActiveSoundEvents();

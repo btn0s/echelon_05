@@ -5,6 +5,16 @@
 #include "Stealth/Data/StealthTuningDataAsset.h"
 #include "Stealth/StealthLog.h"
 
+#include "CollisionQueryParams.h"
+#include "Components/DirectionalLightComponent.h"
+#include "Components/LightComponent.h"
+#include "Components/PointLightComponent.h"
+#include "Components/RectLightComponent.h"
+#include "Components/SkyLightComponent.h"
+#include "Components/SpotLightComponent.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+
 void UStealthSimulationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -21,6 +31,7 @@ void UStealthSimulationSubsystem::Initialize(FSubsystemCollectionBase& Collectio
 void UStealthSimulationSubsystem::Deinitialize()
 {
 	LightVolumes.Reset();
+	CachedSceneLights.Reset();
 	GuardBrains.Reset();
 	ActiveSoundEvents.Reset();
 	Super::Deinitialize();
@@ -57,6 +68,10 @@ void UStealthSimulationSubsystem::ResetSimulation()
 	AlarmState = FAlarmState();
 	bAlertOccurred = false;
 	MissionOutcome = EStealthMissionOutcome::None;
+	PlayerSmoothedLightExposure = 0.f;
+	LastLightSamplingDebug = FStealthLightSamplingDebug();
+	LastSceneLightCacheTime = -100000.f;
+	CachedSceneLights.Reset();
 }
 
 void UStealthSimulationSubsystem::SetTuningAsset(UStealthTuningDataAsset* InTuning)
@@ -151,28 +166,436 @@ void UStealthSimulationSubsystem::SetMissionOutcome(EStealthMissionOutcome Outco
 	MissionOutcome = Outcome;
 }
 
-float UStealthSimulationSubsystem::SampleLightExposureAt(const FVector& WorldLocation) const
+namespace StealthLightSamplingPrivate
 {
-	float DefaultExp = TuningAsset ? TuningAsset->DefaultLightExposureOutsideVolumes : 0.85f;
-
-	bool bInsideAny = false;
-	float Exposure = 0.f;
-	for (const TWeakObjectPtr<AStealthLightVolume>& Ptr : LightVolumes)
+	static FString BuildLightLabel(const ULightComponentBase* Light)
 	{
-		if (const AStealthLightVolume* Vol = Ptr.Get())
+		if (!Light)
 		{
-			if (Vol->EncompassesPoint(WorldLocation))
+			return TEXT("(null)");
+		}
+		const AActor* Owner = Light->GetOwner();
+		const FString OwnerLabel = Owner ? Owner->GetActorNameOrLabel() : FString(TEXT("(no owner)"));
+		return FString::Printf(TEXT("%s.%s"), *OwnerLabel, *Light->GetName());
+	}
+
+	static bool OcclusionHitWorld(UWorld* World, const FVector& SampleWorldPosition, const FVector& TargetWorldPosition,
+		const AActor* OcclusionIgnoreActor, ECollisionChannel Channel)
+	{
+		if (!World)
+		{
+			return false;
+		}
+		const FVector Dir = (TargetWorldPosition - SampleWorldPosition);
+		const float Dist = Dir.Size();
+		if (Dist <= KINDA_SMALL_NUMBER)
+		{
+			return false;
+		}
+		const FVector DirNorm = Dir / Dist;
+		const FVector TraceStart = SampleWorldPosition + DirNorm * 2.f;
+		const FVector TraceEnd = TargetWorldPosition - DirNorm * 2.f;
+
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(StealthLightOcclusion), true);
+		if (OcclusionIgnoreActor)
+		{
+			Params.AddIgnoredActor(OcclusionIgnoreActor);
+		}
+		FHitResult Hit;
+		const bool bHit = World->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, Channel, Params);
+		return bHit;
+	}
+
+	static float EvaluateDirectional(const UDirectionalLightComponent* DirLight, const FVector& SampleWorldPosition,
+		const UStealthTuningDataAsset* Tuning, UWorld* World, const AActor* OcclusionIgnoreActor, ECollisionChannel Channel,
+		FStealthLightContributionDebug* OutDebug)
+	{
+		if (!DirLight || !World || !Tuning)
+		{
+			return 0.f;
+		}
+		const FVector ToSunApprox = -DirLight->GetForwardVector();
+		const FVector TraceTarget = SampleWorldPosition + ToSunApprox * 250000.f;
+		const bool bOccluded = OcclusionHitWorld(World, SampleWorldPosition, TraceTarget, OcclusionIgnoreActor, Channel);
+
+		const float Intensity = DirLight->Intensity;
+		const float ReferenceIntensity = FMath::Max(0.01f, Tuning->SceneLightDirectionalReferenceIntensity);
+		float Applied = Tuning->SceneLightDirectionalExposureScale * FMath::Clamp(Intensity / ReferenceIntensity, 0.f, 2.f);
+		if (bOccluded)
+		{
+			Applied = 0.f;
+		}
+
+		if (OutDebug)
+		{
+			OutDebug->LightLabel = BuildLightLabel(DirLight);
+			OutDebug->LightClassName = DirLight->GetClass()->GetName();
+			OutDebug->Contribution = Applied;
+			OutDebug->bOccluded = bOccluded;
+			OutDebug->DistanceFromSample = 0.f;
+			OutDebug->LightWorldLocation = TraceTarget;
+		}
+		return Applied;
+	}
+
+	static float EvaluatePointLike(float Intensity, float Distance, float AttenuationRadius, float Normalization)
+	{
+		if (AttenuationRadius <= KINDA_SMALL_NUMBER || Distance > AttenuationRadius)
+		{
+			return 0.f;
+		}
+		const float Falloff = FMath::Pow(1.f - Distance / AttenuationRadius, 2.f);
+		return FMath::Clamp(Intensity / FMath::Max(1.f, Normalization), 0.f, 4.f) * Falloff;
+	}
+
+	static float EvaluatePointLight(const UPointLightComponent* PL, const FVector& SampleWorldPosition,
+		const UStealthTuningDataAsset* Tuning, UWorld* World, const AActor* OcclusionIgnoreActor, ECollisionChannel Channel,
+		FStealthLightContributionDebug* OutDebug)
+	{
+		if (!PL || !World || !Tuning)
+		{
+			return 0.f;
+		}
+		const FVector LLoc = PL->GetComponentLocation();
+		const float Dist = FVector::Dist(SampleWorldPosition, LLoc);
+		if (Dist > Tuning->SceneLightMaxConsiderDistance)
+		{
+			return 0.f;
+		}
+
+		const FVector TraceTarget = LLoc;
+		const bool bOccluded = OcclusionHitWorld(World, SampleWorldPosition, TraceTarget, OcclusionIgnoreActor, Channel);
+
+		float Applied = EvaluatePointLike(PL->Intensity, Dist, PL->AttenuationRadius, Tuning->SceneLightIntensityNormalization);
+		if (bOccluded)
+		{
+			Applied = 0.f;
+		}
+
+		if (OutDebug)
+		{
+			OutDebug->LightLabel = BuildLightLabel(PL);
+			OutDebug->LightClassName = PL->GetClass()->GetName();
+			OutDebug->Contribution = Applied;
+			OutDebug->bOccluded = bOccluded;
+			OutDebug->DistanceFromSample = Dist;
+			OutDebug->LightWorldLocation = LLoc;
+		}
+		return Applied;
+	}
+
+	static float EvaluateSpotLight(const USpotLightComponent* SL, const FVector& SampleWorldPosition,
+		const UStealthTuningDataAsset* Tuning, UWorld* World, const AActor* OcclusionIgnoreActor, ECollisionChannel Channel,
+		FStealthLightContributionDebug* OutDebug)
+	{
+		if (!SL || !World || !Tuning)
+		{
+			return 0.f;
+		}
+		const FVector LLoc = SL->GetComponentLocation();
+		const FVector LToS = (SampleWorldPosition - LLoc).GetSafeNormal();
+		const float Dist = FVector::Dist(SampleWorldPosition, LLoc);
+		if (Dist > Tuning->SceneLightMaxConsiderDistance || Dist > SL->AttenuationRadius)
+		{
+			return 0.f;
+		}
+
+		const float OuterHalfRad = FMath::DegreesToRadians(SL->OuterConeAngle * 0.5f);
+		const float CosOuter = FMath::Cos(OuterHalfRad);
+		const float DotAxis = FVector::DotProduct(LToS, SL->GetForwardVector());
+		if (DotAxis < CosOuter)
+		{
+			return 0.f;
+		}
+
+		const float InnerHalfRad = FMath::DegreesToRadians(SL->InnerConeAngle * 0.5f);
+		const float CosInner = FMath::Cos(InnerHalfRad);
+		float ConeMul = 1.f;
+		if (DotAxis < CosInner)
+		{
+			ConeMul = FMath::Clamp((DotAxis - CosOuter) / FMath::Max(CosInner - CosOuter, KINDA_SMALL_NUMBER), 0.f, 1.f);
+		}
+
+		const FVector TraceTarget = LLoc;
+		const bool bOccluded = OcclusionHitWorld(World, SampleWorldPosition, TraceTarget, OcclusionIgnoreActor, Channel);
+
+		float Applied =
+			EvaluatePointLike(SL->Intensity, Dist, SL->AttenuationRadius, Tuning->SceneLightIntensityNormalization) * ConeMul;
+		if (bOccluded)
+		{
+			Applied = 0.f;
+		}
+
+		if (OutDebug)
+		{
+			OutDebug->LightLabel = BuildLightLabel(SL);
+			OutDebug->LightClassName = SL->GetClass()->GetName();
+			OutDebug->Contribution = Applied;
+			OutDebug->bOccluded = bOccluded;
+			OutDebug->DistanceFromSample = Dist;
+			OutDebug->LightWorldLocation = LLoc;
+		}
+		return Applied;
+	}
+
+	static float EvaluateRectLight(const URectLightComponent* RL, const FVector& SampleWorldPosition,
+		const UStealthTuningDataAsset* Tuning, UWorld* World, const AActor* OcclusionIgnoreActor, ECollisionChannel Channel,
+		FStealthLightContributionDebug* OutDebug)
+	{
+		if (!RL || !World || !Tuning)
+		{
+			return 0.f;
+		}
+		const FVector LLoc = RL->GetComponentLocation();
+		const float Dist = FVector::Dist(SampleWorldPosition, LLoc);
+		if (Dist > Tuning->SceneLightMaxConsiderDistance || Dist > RL->AttenuationRadius)
+		{
+			return 0.f;
+		}
+
+		const FVector TraceTarget = LLoc;
+		const bool bOccluded = OcclusionHitWorld(World, SampleWorldPosition, TraceTarget, OcclusionIgnoreActor, Channel);
+
+		float Applied = EvaluatePointLike(RL->Intensity, Dist, RL->AttenuationRadius, Tuning->SceneLightIntensityNormalization);
+		if (bOccluded)
+		{
+			Applied = 0.f;
+		}
+
+		if (OutDebug)
+		{
+			OutDebug->LightLabel = BuildLightLabel(RL);
+			OutDebug->LightClassName = RL->GetClass()->GetName();
+			OutDebug->Contribution = Applied;
+			OutDebug->bOccluded = bOccluded;
+			OutDebug->DistanceFromSample = Dist;
+			OutDebug->LightWorldLocation = LLoc;
+		}
+		return Applied;
+	}
+} // namespace StealthLightSamplingPrivate
+
+void UStealthSimulationSubsystem::RefreshSceneLightCache(float WorldTimeSeconds)
+{
+	UWorld* World = GetWorld();
+	if (!World || !TuningAsset)
+	{
+		return;
+	}
+
+	const float Interval = FMath::Max(0.05f, TuningAsset->SceneLightCacheRefreshSeconds);
+	if ((WorldTimeSeconds - LastSceneLightCacheTime) < Interval && CachedSceneLights.Num() > 0)
+	{
+		return;
+	}
+
+	LastSceneLightCacheTime = WorldTimeSeconds;
+	CachedSceneLights.Reset();
+
+	const float MaxBoundsRadius = TuningAsset->SceneLightMaxBoundsRadius;
+
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		AActor* Actor = *It;
+		if (!Actor)
+		{
+			continue;
+		}
+
+		TArray<ULightComponentBase*> LightComps;
+		Actor->GetComponents<ULightComponentBase>(LightComps);
+
+		for (ULightComponentBase* Light : LightComps)
+		{
+			if (!Light || !Light->IsRegistered())
 			{
-				bInsideAny = true;
-				Exposure = FMath::Max(Exposure, Vol->GetLightExposure());
+				continue;
 			}
+
+			if (!Light->IsVisible())
+			{
+				continue;
+			}
+
+			if (Cast<USkyLightComponent>(Light))
+			{
+				continue;
+			}
+
+			const float BoundsRadius = Light->Bounds.SphereRadius;
+			const bool bDirectional = Cast<UDirectionalLightComponent>(Light) != nullptr;
+			if (!bDirectional && BoundsRadius > MaxBoundsRadius)
+			{
+				continue;
+			}
+
+			CachedSceneLights.Add(Light);
 		}
 	}
-	if (!bInsideAny)
+}
+
+float UStealthSimulationSubsystem::ComputeSceneLightExposureAt(const FVector& SampleWorldPosition,
+	const AActor* OcclusionIgnoreActor, TArray<FStealthLightContributionDebug>* OutSortedContributions) const
+{
+	UWorld* World = GetWorld();
+	if (!World || !TuningAsset)
 	{
-		return DefaultExp;
+		return TuningAsset ? TuningAsset->ShadowLightExposure : 0.15f;
 	}
-	return Exposure;
+
+	const ECollisionChannel Channel = TuningAsset->SceneLightOcclusionChannel.GetValue();
+
+	TArray<FStealthLightContributionDebug> AllContribs;
+
+	float Sum = TuningAsset->SceneLightAmbientExposure;
+
+	for (const TWeakObjectPtr<ULightComponentBase>& Ptr : CachedSceneLights)
+	{
+		ULightComponentBase* LightBase = Ptr.Get();
+		if (!LightBase)
+		{
+			continue;
+		}
+
+		FStealthLightContributionDebug Row;
+		float Added = 0.f;
+
+		if (UDirectionalLightComponent* DirLight = Cast<UDirectionalLightComponent>(LightBase))
+		{
+			Added = StealthLightSamplingPrivate::EvaluateDirectional(
+				DirLight, SampleWorldPosition, TuningAsset, World, OcclusionIgnoreActor, Channel, &Row);
+		}
+		else if (USpotLightComponent* SL = Cast<USpotLightComponent>(LightBase))
+		{
+			Added = StealthLightSamplingPrivate::EvaluateSpotLight(
+				SL, SampleWorldPosition, TuningAsset, World, OcclusionIgnoreActor, Channel, &Row);
+		}
+		else if (UPointLightComponent* PL = Cast<UPointLightComponent>(LightBase))
+		{
+			Added = StealthLightSamplingPrivate::EvaluatePointLight(
+				PL, SampleWorldPosition, TuningAsset, World, OcclusionIgnoreActor, Channel, &Row);
+		}
+		else if (URectLightComponent* RL = Cast<URectLightComponent>(LightBase))
+		{
+			Added = StealthLightSamplingPrivate::EvaluateRectLight(
+				RL, SampleWorldPosition, TuningAsset, World, OcclusionIgnoreActor, Channel, &Row);
+		}
+		else
+		{
+			continue;
+		}
+
+		if (Added > KINDA_SMALL_NUMBER || Row.bOccluded)
+		{
+			AllContribs.Add(Row);
+		}
+
+		Sum += Added;
+	}
+
+	const float Saturated = FMath::Clamp(Sum, 0.f, 1.f);
+
+	if (OutSortedContributions)
+	{
+		AllContribs.Sort([](const FStealthLightContributionDebug& A, const FStealthLightContributionDebug& B)
+		{
+			return A.Contribution > B.Contribution;
+		});
+
+		const int32 MaxRows = FMath::Clamp(TuningAsset->SceneLightDebugTopContributors, 1, 16);
+		for (int32 i = 0; i < AllContribs.Num() && i < MaxRows; ++i)
+		{
+			OutSortedContributions->Add(AllContribs[i]);
+		}
+	}
+
+	return Saturated;
+}
+
+float UStealthSimulationSubsystem::SampleLightExposureAt(const FVector& WorldLocation, const AActor* OcclusionIgnoreActor)
+{
+	if (!GetWorld())
+	{
+		return TuningAsset ? TuningAsset->ShadowLightExposure : 0.15f;
+	}
+
+	RefreshSceneLightCache(GetWorld()->GetTimeSeconds());
+	return ComputeSceneLightExposureAt(WorldLocation, OcclusionIgnoreActor, nullptr);
+}
+
+float UStealthSimulationSubsystem::SampleBodyLightExposureMaxBias(const TArray<FVector>& BodyWorldPositions,
+	const TArray<FString>& BodyLabels, const AActor* OcclusionIgnoreActor, float DeltaTime)
+{
+	FStealthLightSamplingDebug Debug;
+	Debug.BodySamples.Reserve(BodyWorldPositions.Num());
+
+	if (!GetWorld())
+	{
+		LastLightSamplingDebug = Debug;
+		return PlayerSmoothedLightExposure;
+	}
+
+	if (!TuningAsset)
+	{
+		LastLightSamplingDebug = Debug;
+		return PlayerSmoothedLightExposure;
+	}
+
+	RefreshSceneLightCache(GetWorld()->GetTimeSeconds());
+	Debug.CachedLightCount = CachedSceneLights.Num();
+
+	if (BodyWorldPositions.Num() == 0)
+	{
+		Debug.FinalExposure = PlayerSmoothedLightExposure;
+		LastLightSamplingDebug = Debug;
+		return PlayerSmoothedLightExposure;
+	}
+
+	float MaxExp = 0.f;
+	float MeanAccum = 0.f;
+
+	for (int32 i = 0; i < BodyWorldPositions.Num(); ++i)
+	{
+		const FVector P = BodyWorldPositions[i];
+		FStealthBodyLightSampleDebug Pt;
+		Pt.SampleName = BodyLabels.IsValidIndex(i) ? BodyLabels[i] : FString::Printf(TEXT("Sample_%d"), i);
+		Pt.WorldPosition = P;
+
+		TArray<FStealthLightContributionDebug> Contribs;
+		Pt.Exposure = ComputeSceneLightExposureAt(P, OcclusionIgnoreActor, &Contribs);
+		Pt.Contributions = MoveTemp(Contribs);
+
+		Debug.BodySamples.Add(Pt);
+
+		MaxExp = FMath::Max(MaxExp, Pt.Exposure);
+		MeanAccum += Pt.Exposure;
+	}
+
+	const float MeanExp = MeanAccum / static_cast<float>(BodyWorldPositions.Num());
+	const float BlendAlpha = FMath::Clamp(TuningAsset->SceneLightMaxBiasBlend, 0.f, 1.f);
+	const float RawCombined = FMath::Lerp(MeanExp, MaxExp, BlendAlpha);
+
+	Debug.RawMaxExposure = MaxExp;
+
+	float Smoothed = PlayerSmoothedLightExposure;
+	const float HalfLife = TuningAsset->SceneLightExposureSmoothingHalfLife;
+	if (HalfLife <= KINDA_SMALL_NUMBER)
+	{
+		Smoothed = RawCombined;
+	}
+	else
+	{
+		const float Lambda = 0.69314718f / HalfLife;
+		const float Alpha = 1.f - FMath::Exp(-Lambda * FMath::Max(DeltaTime, KINDA_SMALL_NUMBER));
+		Smoothed = FMath::Lerp(PlayerSmoothedLightExposure, RawCombined, Alpha);
+	}
+
+	PlayerSmoothedLightExposure = Smoothed;
+	Debug.SmoothedExposure = Smoothed;
+	Debug.FinalExposure = Smoothed;
+	LastLightSamplingDebug = Debug;
+
+	return Smoothed;
 }
 
 void UStealthSimulationSubsystem::ExpireSoundEvents(float WorldTimeSeconds)
