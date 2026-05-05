@@ -64,11 +64,14 @@ namespace StealthUI
 	// "Mono" face matches the reference aesthetic; "Bold" weight is reserved for
 	// large readouts so they read as primary instrumentation.
 
-	inline FSlateFontInfo FMicro()   { return FCoreStyle::GetDefaultFontStyle("Mono", 9);  }
-	inline FSlateFontInfo FLabel()   { return FCoreStyle::GetDefaultFontStyle("Mono", 11); }
-	inline FSlateFontInfo FBody()    { return FCoreStyle::GetDefaultFontStyle("Mono", 13); }
-	inline FSlateFontInfo FBanner()  { return FCoreStyle::GetDefaultFontStyle("Mono", 18); }
-	inline FSlateFontInfo FReadout() { return FCoreStyle::GetDefaultFontStyle("Mono", 24); }
+	// Sizes are nudged ~20% above the DESIGN.md token defaults (9/11/13/18/24)
+	// so the always-on HUD reads cleanly on a 1080p PIE viewport without losing
+	// the "small instrumentation" feel — see DESIGN.md `## Scale And Spacing`.
+	inline FSlateFontInfo FMicro()   { return FCoreStyle::GetDefaultFontStyle("Mono", 11); }
+	inline FSlateFontInfo FLabel()   { return FCoreStyle::GetDefaultFontStyle("Mono", 13); }
+	inline FSlateFontInfo FBody()    { return FCoreStyle::GetDefaultFontStyle("Mono", 16); }
+	inline FSlateFontInfo FBanner()  { return FCoreStyle::GetDefaultFontStyle("Mono", 22); }
+	inline FSlateFontInfo FReadout() { return FCoreStyle::GetDefaultFontStyle("Mono", 30); }
 
 	// ── Spacing (all px, scale * 4) ──────────────────────────────────────────
 	constexpr float SpacingXS = 4.f;

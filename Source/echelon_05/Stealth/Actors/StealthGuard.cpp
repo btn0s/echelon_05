@@ -25,7 +25,7 @@ AStealthGuard::AStealthGuard()
 	GuardStatusWidget->SetWidgetSpace(EWidgetSpace::Screen);
 	// Plate size accommodates the 5-tick suspicion row + corner brackets and the
 	// inverted ALERT block (Docs/ui/DESIGN.md `### Guard Suspicion Plate`).
-	GuardStatusWidget->SetDrawSize(FVector2D(96.f, 16.f));
+	GuardStatusWidget->SetDrawSize(FVector2D(118.f, 22.f));
 	GuardStatusWidget->SetDrawAtDesiredSize(false);
 	GuardStatusWidget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GuardStatusWidget->SetGenerateOverlapEvents(false);

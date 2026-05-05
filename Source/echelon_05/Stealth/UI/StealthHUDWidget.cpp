@@ -37,19 +37,20 @@ namespace
 	constexpr float PeakDecayPerSecond  = 0.30f;    // visible memory ~3 s before fully draining
 
 	// ── Card geometry — one place to retune the metric cluster ───────────────
-	constexpr float CardW   = 188.f;
-	constexpr float CardH   = 84.f;
-	constexpr float CardGap = SpacingMD;
+	constexpr float CardW   = 230.f;
+	constexpr float CardH   = 102.f;
+	constexpr float CardGap = SpacingLG;
 
 	// ── Mission row geometry ─────────────────────────────────────────────────
-	constexpr float MissionIndicatorSize = 9.f;
-	constexpr float MissionRowHeight     = 18.f;
-	constexpr float MissionLabelXOffset  = 18.f;
-	constexpr float MissionStateXOffset  = 56.f;
+	constexpr float MissionIndicatorSize = 11.f;
+	constexpr float MissionRowHeight     = 22.f;
+	constexpr float MissionLabelXOffset  = 22.f;
+	constexpr float MissionStateXOffset  = 66.f;
+	constexpr float MissionUnderlineW    = 130.f;
 
 	// ── Detection banner geometry ────────────────────────────────────────────
-	constexpr float BannerW = 300.f;
-	constexpr float BannerH = 32.f;
+	constexpr float BannerW = 360.f;
+	constexpr float BannerH = 40.f;
 
 	// ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -143,21 +144,25 @@ namespace
 
 		// Readout — large numeric, right-aligned to card edge so it visually
 		// terminates the card and so the eye lands on the value first.
-		const FString Value = FString::Printf(TEXT("%2.0f"), V01 * 100.f);
-		const float ValueW  = MeasureTextWidth(Value, FReadout());
-		DrawText(Out, Layer, Geo, Value, {X + W - ValueW, Y - 2.f}, TextPrimary(), FReadout());
+		const FString Value   = FString::Printf(TEXT("%2.0f"), V01 * 100.f);
+		const float   ValueW  = MeasureTextWidth(Value, FReadout());
+		const float   PercentW = MeasureTextWidth(TEXT("%"), FLabel());
+		DrawText(Out, Layer, Geo, Value,
+			{X + W - ValueW - PercentW - 4.f, Y - 4.f}, TextPrimary(), FReadout());
 
-		// Tiny "%" suffix sitting in the readout's lower-right baseline.
-		DrawText(Out, Layer, Geo, TEXT("%"), {X + W - 8.f, Y + 18.f}, TextSecondary(), FMicro());
+		// Compact "%" suffix riding the readout's baseline.
+		DrawText(Out, Layer, Geo, TEXT("%"),
+			{X + W - PercentW, Y + 16.f}, TextSecondary(), FLabel());
 
 		// Segmented meter
-		const float MeterY = Y + H - 18.f;
-		SegmentedMeter(Out, Layer, Geo, X, MeterY, W, 8.f, V01, /*Segments*/ 16, Peak01);
+		const float MeterY = Y + H - 22.f;
+		SegmentedMeter(Out, Layer, Geo, X, MeterY, W, 10.f, V01, /*Segments*/ 16, Peak01);
 
 		// State label
 		const FString State = VisStateLabel(V01);
 		const float StateW  = MeasureTextWidth(State, FMicro());
-		DrawText(Out, Layer, Geo, State, {X + W - StateW, MeterY + 10.f}, TextSecondary(), FMicro());
+		DrawText(Out, Layer, Geo, State,
+			{X + W - StateW, MeterY + 12.f}, TextSecondary(), FMicro());
 	}
 
 	/**
@@ -171,19 +176,22 @@ namespace
 	{
 		DrawText(Out, Layer, Geo, TEXT("NSE"), {X, Y}, TextMuted(), FMicro());
 
-		const FString Value = FString::Printf(TEXT("%2.0f"), N01 * 100.f);
-		const float ValueW  = MeasureTextWidth(Value, FReadout());
-		DrawText(Out, Layer, Geo, Value, {X + W - ValueW, Y - 2.f}, TextPrimary(), FReadout());
+		const FString Value    = FString::Printf(TEXT("%2.0f"), N01 * 100.f);
+		const float   ValueW   = MeasureTextWidth(Value, FReadout());
+		const float   PercentW = MeasureTextWidth(TEXT("%"), FLabel());
+		DrawText(Out, Layer, Geo, Value,
+			{X + W - ValueW - PercentW - 4.f, Y - 4.f}, TextPrimary(), FReadout());
 
-		DrawText(Out, Layer, Geo, TEXT("%"), {X + W - 8.f, Y + 18.f}, TextSecondary(), FMicro());
+		DrawText(Out, Layer, Geo, TEXT("%"),
+			{X + W - PercentW, Y + 16.f}, TextSecondary(), FLabel());
 
-		const float WaveY = Y + H - 22.f;
-		WaveformStrip(Out, Layer, Geo, X, WaveY, W, 12.f, History,
-			LinePrimary());
+		const float WaveY = Y + H - 28.f;
+		WaveformStrip(Out, Layer, Geo, X, WaveY, W, 16.f, History, LinePrimary());
 
 		const FString State = NoiseStateLabel(N01);
 		const float StateW  = MeasureTextWidth(State, FMicro());
-		DrawText(Out, Layer, Geo, State, {X + W - StateW, WaveY + 14.f}, TextSecondary(), FMicro());
+		DrawText(Out, Layer, Geo, State,
+			{X + W - StateW, WaveY + 18.f}, TextSecondary(), FMicro());
 	}
 
 	/**
@@ -217,21 +225,21 @@ namespace
 			const float Pulse = 0.55f + 0.25f * FMath::Sin(T * (TWO_PI / 1.4f));
 			const FLinearColor C = LinePrimary().CopyWithNewOpacity(Pulse * 0.55f);
 
-			CornerBrackets(Out, Layer, Geo, BX, BY, BannerW, BannerH, 10.f, C);
+			CornerBrackets(Out, Layer, Geo, BX, BY, BannerW, BannerH, 12.f, C);
 			DrawText(Out, Layer, Geo, Label,
-				{BX + SpacingLG, BY + 9.f}, TextSecondary(), FLabel());
+				{BX + SpacingLG, BY + 12.f}, TextSecondary(), FLabel());
 			break;
 		}
 		case EGuardSuspicionState::Suspicious:
 		{
 			// Outlined frame + segmented fill across the bottom rail of the banner.
 			Outline(Out, Layer, Geo, BX, BY, BannerW, BannerH, HairlineActive());
-			SegmentedMeter(Out, Layer, Geo, BX + 4.f, BY + BannerH - 6.f, BannerW - 8.f, 3.f,
-				Susp01, /*Segments*/ 22);
+			SegmentedMeter(Out, Layer, Geo, BX + 4.f, BY + BannerH - 7.f, BannerW - 8.f, 4.f,
+				Susp01, /*Segments*/ 24);
 			DrawText(Out, Layer, Geo, Label,
-				{BX + SpacingLG, BY + 8.f}, TextPrimary(), FLabel());
+				{BX + SpacingLG, BY + 11.f}, TextPrimary(), FLabel());
 			DrawText(Out, Layer, Geo, Percent,
-				{BX + BannerW - SpacingLG - MeasureTextWidth(Percent, FMicro()), BY + 10.f},
+				{BX + BannerW - SpacingLG - MeasureTextWidth(Percent, FMicro()), BY + 13.f},
 				TextSecondary(), FMicro());
 			break;
 		}
@@ -240,17 +248,17 @@ namespace
 			// Outlined frame + segmented fill + sweeping scan arc on the left side
 			// to encode "actively searching" at a glance.
 			Outline(Out, Layer, Geo, BX, BY, BannerW, BannerH, HairlineActive());
-			SegmentedMeter(Out, Layer, Geo, BX + 4.f, BY + BannerH - 6.f, BannerW - 8.f, 3.f,
-				Susp01, /*Segments*/ 22);
+			SegmentedMeter(Out, Layer, Geo, BX + 4.f, BY + BannerH - 7.f, BannerW - 8.f, 4.f,
+				Susp01, /*Segments*/ 24);
 
 			const float Sweep = FMath::Fmod(T * 2.4f, PI * 2.f);
-			ScanArc(Out, Layer, Geo, BX + 16.f, BY + BannerH * 0.5f, 9.f,
+			ScanArc(Out, Layer, Geo, BX + 20.f, BY + BannerH * 0.5f, 11.f,
 				Sweep, PI * 0.65f, LinePrimary().CopyWithNewOpacity(0.85f), 14);
 
 			DrawText(Out, Layer, Geo, Label,
-				{BX + 36.f, BY + 8.f}, TextPrimary(), FLabel());
+				{BX + 44.f, BY + 11.f}, TextPrimary(), FLabel());
 			DrawText(Out, Layer, Geo, Percent,
-				{BX + BannerW - SpacingLG - MeasureTextWidth(Percent, FMicro()), BY + 10.f},
+				{BX + BannerW - SpacingLG - MeasureTextWidth(Percent, FMicro()), BY + 13.f},
 				TextSecondary(), FMicro());
 			break;
 		}
@@ -262,9 +270,9 @@ namespace
 			FillRect(Out, Layer++, Geo, {BX, BY}, {BannerW, BannerH + 2.f},
 				FLinearColor(Pulse, Pulse, Pulse, 1.f));
 			DrawText(Out, Layer, Geo, Label,
-				{BX + SpacingLG, BY + 6.f}, InverseText(), FBanner());
+				{BX + SpacingLG, BY + 8.f}, InverseText(), FBanner());
 			DrawText(Out, Layer, Geo, Percent,
-				{BX + BannerW - SpacingLG - MeasureTextWidth(Percent, FBody()), BY + 10.f},
+				{BX + BannerW - SpacingLG - MeasureTextWidth(Percent, FBody()), BY + 12.f},
 				FLinearColor(0.f, 0.f, 0.f, 0.6f), FBody());
 			break;
 		}
@@ -366,11 +374,11 @@ int32 UStealthHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 
 		DrawText(OutDrawElements, L, AllottedGeometry, TEXT("MISSION"),
 			{MX, MY}, TextMuted(), FMicro());
-		MY += 14.f;
+		MY += 18.f;
 
 		// Thin underline tying the section header to its rows.
-		HRule(OutDrawElements, L, AllottedGeometry, MX, MY, 110.f);
-		MY += 8.f;
+		HRule(OutDrawElements, L, AllottedGeometry, MX, MY, MissionUnderlineW);
+		MY += 10.f;
 
 		// OBJ row
 		{
@@ -495,8 +503,8 @@ int32 UStealthHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 
 		// Section header riding above the pair — names the instrument cluster.
 		DrawText(OutDrawElements, L, AllottedGeometry, TEXT("EXPOSURE"),
-			{CX, CY - 16.f}, TextMuted(), FMicro());
-		HRule(OutDrawElements, L, AllottedGeometry, CX + 64.f, CY - 11.f, TotalW - 64.f);
+			{CX, CY - 20.f}, TextMuted(), FMicro());
+		HRule(OutDrawElements, L, AllottedGeometry, CX + 80.f, CY - 13.f, TotalW - 80.f);
 	}
 
 	// ── 7. Diagnostics overlay (right side, gated by stealth.DebugDraw) ──────

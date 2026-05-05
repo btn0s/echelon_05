@@ -10,10 +10,13 @@
 #include "DrawDebugHelpers.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/WidgetComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Pawn.h"
 #include "Kismet/GameplayStatics.h"
 #include "Navigation/PathFollowingComponent.h"
@@ -374,6 +377,86 @@ bool UStealthGuardBrainComponent::CanBeBackTakedownBy(APawn* InteractingPawn) co
 	return Dot <= BehindThreshold;
 }
 
+void UStealthGuardBrainComponent::ApplyBackTakedownRagdoll(APawn* GuardPawn, APawn* InteractingPawn)
+{
+	bTakedownRagdollActive = false;
+
+	ACharacter* Character = Cast<ACharacter>(GuardPawn);
+	if (!Character)
+	{
+		return;
+	}
+
+	TArray<UWidgetComponent*> Widgets;
+	Character->GetComponents<UWidgetComponent>(Widgets);
+	for (UWidgetComponent* Widget : Widgets)
+	{
+		if (Widget)
+		{
+			Widget->SetHiddenInGame(true);
+			Widget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		}
+	}
+
+	if (UCapsuleComponent* Capsule = Character->GetCapsuleComponent())
+	{
+		Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Capsule->SetCollisionResponseToAllChannels(ECR_Ignore);
+	}
+
+	if (UCharacterMovementComponent* Move = Character->GetCharacterMovement())
+	{
+		Move->StopMovementImmediately();
+		Move->DisableMovement();
+	}
+
+	USkeletalMeshComponent* MainMesh = Character->GetMesh();
+	if (!MainMesh)
+	{
+		return;
+	}
+
+	TArray<USkeletalMeshComponent*> SkelMeshes;
+	Character->GetComponents<USkeletalMeshComponent>(SkelMeshes);
+	for (USkeletalMeshComponent* Extra : SkelMeshes)
+	{
+		if (Extra && Extra != MainMesh)
+		{
+			Extra->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Extra->SetSimulatePhysics(false);
+			Extra->SetHiddenInGame(true, true);
+		}
+	}
+
+	if (!MainMesh->GetSkeletalMeshAsset() || !MainMesh->GetPhysicsAsset())
+	{
+		UE_LOG(LogStealth, Warning,
+			TEXT("%s: Ragdoll skipped — assign a Physics Asset on the guard mesh (ALS mannequin ships with one)."),
+			*Character->GetName());
+		return;
+	}
+
+	MainMesh->SetCollisionProfileName(TEXT("Ragdoll"));
+	MainMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	MainMesh->bBlendPhysics = false;
+	MainMesh->SetGenerateOverlapEvents(false);
+	MainMesh->SetAllBodiesSimulatePhysics(true);
+	MainMesh->SetSimulatePhysics(true);
+
+	if (InteractingPawn && BackTakedownRagdollImpulse > KINDA_SMALL_NUMBER)
+	{
+		FVector Dir = Character->GetActorLocation() - InteractingPawn->GetActorLocation();
+		Dir.Z = 0.f;
+		if (Dir.Normalize())
+		{
+			const float Mass = FMath::Max(MainMesh->GetMass(), 1.f);
+			MainMesh->AddImpulse(Dir * BackTakedownRagdollImpulse * Mass, NAME_None, true);
+		}
+	}
+
+	bTakedownRagdollActive = true;
+}
+
 bool UStealthGuardBrainComponent::TryBackTakedown(APawn* InteractingPawn)
 {
 	if (!CanBeBackTakedownBy(InteractingPawn))
@@ -412,6 +495,13 @@ bool UStealthGuardBrainComponent::TryBackTakedown(APawn* InteractingPawn)
 		AI->ClearFocus(EAIFocusPriority::Gameplay);
 	}
 
+	bool bDidRagdoll = false;
+	if (bRagdollOnBackTakedown)
+	{
+		ApplyBackTakedownRagdoll(OwnerPawn, InteractingPawn);
+		bDidRagdoll = bTakedownRagdollActive;
+	}
+
 	if (UWorld* World = GetWorld())
 	{
 		if (UStealthSimulationSubsystem* Sim = World->GetSubsystem<UStealthSimulationSubsystem>())
@@ -433,7 +523,7 @@ bool UStealthGuardBrainComponent::TryBackTakedown(APawn* InteractingPawn)
 		}
 	}
 
-	if (BackTakedownVictimMontage)
+	if (BackTakedownVictimMontage && !bDidRagdoll)
 	{
 		if (ACharacter* Char = Cast<ACharacter>(OwnerPawn))
 		{

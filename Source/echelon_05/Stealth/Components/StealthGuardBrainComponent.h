@@ -64,6 +64,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth|BackTakedownPresentation", meta = (ClampMin = 0))
 	float BackTakedownPresentationPitch = 1.f;
 
+	/** Enables full-body physics on characters with a skeletal mesh Physics Asset (recommended for AlsGuard). Montage playback is skipped when this is enabled. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth|BackTakedownPresentation")
+	bool bRagdollOnBackTakedown = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth|BackTakedownPresentation", meta = (ClampMin = 0))
+	float BackTakedownRagdollImpulse = 520.f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Stealth|BackTakedownPresentation")
+	bool bTakedownRagdollActive = false;
+
 	UFUNCTION(BlueprintPure, Category = "Stealth")
 	bool IsMovementAppliedByBehaviorTreeTask() const { return bMovementAppliedByBehaviorTreeTask; }
 
@@ -87,6 +97,7 @@ protected:
 	void UpdateBrainMode(UStealthSimulationSubsystem* Sim);
 	void RefreshSuspicionBucket(const UStealthTuningDataAsset* Tuning);
 	void ResolvePatrolRoute();
+	void ApplyBackTakedownRagdoll(APawn* GuardPawn, APawn* InteractingPawn);
 	bool ComputeVisionToPlayer(APawn* Player, float& OutNormalizedStrength) const;
 	bool ComputeAuditoryStimulus(const UStealthSimulationSubsystem* Sim, float& OutStrength) const;
 
