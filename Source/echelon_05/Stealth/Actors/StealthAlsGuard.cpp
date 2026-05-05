@@ -2,6 +2,7 @@
 
 #include "Stealth/AI/StealthAlsAIController.h"
 #include "Stealth/Components/StealthGuardBrainComponent.h"
+#include "Stealth/Components/StealthHealthComponent.h"
 #include "Stealth/Types/StealthEnums.h"
 #include "Stealth/UI/StealthGuardStatusWidget.h"
 
@@ -21,13 +22,17 @@ AStealthAlsGuard::AStealthAlsGuard(const FObjectInitializer& ObjectInitializer)
 	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	GuardBrain = CreateDefaultSubobject<UStealthGuardBrainComponent>(TEXT("GuardBrain"));
+	Health = CreateDefaultSubobject<UStealthHealthComponent>(TEXT("Health"));
+	Health->Team = EStealthTeam::Guard;
 
 	GuardStatusWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("GuardStatusWidget"));
 	GuardStatusWidget->SetupAttachment(GetRootComponent());
-	GuardStatusWidget->SetRelativeLocation(FVector(0.f, 0.f, 155.f));
+	GuardStatusWidget->SetRelativeLocation(FVector(0.f, 0.f, 160.f));
 	GuardStatusWidget->SetWidgetClass(UStealthGuardStatusWidget::StaticClass());
 	GuardStatusWidget->SetWidgetSpace(EWidgetSpace::Screen);
-	GuardStatusWidget->SetDrawSize(FVector2D(120.f, 6.f));
+	// Plate size accommodates the 5-tick suspicion row + corner brackets and the
+	// inverted ALERT block (Docs/ui/DESIGN.md `### Guard Suspicion Plate`).
+	GuardStatusWidget->SetDrawSize(FVector2D(96.f, 16.f));
 	GuardStatusWidget->SetDrawAtDesiredSize(false);
 	GuardStatusWidget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GuardStatusWidget->SetGenerateOverlapEvents(false);
@@ -127,6 +132,30 @@ FString AStealthAlsGuard::GetDebugBrainLine() const
 	}
 
 	return FString(TEXT("Brain: --"));
+}
+
+bool AStealthAlsGuard::CanStealthInteract_Implementation(APawn* InteractingPawn)
+{
+	if (UStealthGuardBrainComponent* ActiveBrain = FindActiveGuardBrain())
+	{
+		return ActiveBrain->CanBeBackTakedownBy(InteractingPawn);
+	}
+
+	return false;
+}
+
+FText AStealthAlsGuard::GetStealthInteractionText_Implementation(APawn* InteractingPawn)
+{
+	(void)InteractingPawn;
+	return NSLOCTEXT("StealthAlsGuard", "BackTakedownText", "Takedown");
+}
+
+void AStealthAlsGuard::StealthInteract_Implementation(APawn* InteractingPawn)
+{
+	if (UStealthGuardBrainComponent* ActiveBrain = FindActiveGuardBrain())
+	{
+		ActiveBrain->TryBackTakedown(InteractingPawn);
+	}
 }
 
 void AStealthAlsGuard::ApplyAlsLocomotionPresentation()

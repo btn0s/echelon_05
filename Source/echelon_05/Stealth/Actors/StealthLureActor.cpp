@@ -7,8 +7,31 @@ AStealthLureActor::AStealthLureActor()
 	PrimaryActorTick.bCanEverTick = false;
 }
 
+bool AStealthLureActor::CanStealthInteract_Implementation(APawn* InteractingPawn)
+{
+	(void)InteractingPawn;
+	return !bSingleUse || !bTriggered;
+}
+
+FText AStealthLureActor::GetStealthInteractionText_Implementation(APawn* InteractingPawn)
+{
+	(void)InteractingPawn;
+	return NSLOCTEXT("StealthLureActor", "TriggerLureText", "Trigger Lure");
+}
+
+void AStealthLureActor::StealthInteract_Implementation(APawn* InteractingPawn)
+{
+	(void)InteractingPawn;
+	TriggerLure();
+}
+
 void AStealthLureActor::TriggerLure(const float LoudnessScale)
 {
+	if (bSingleUse && bTriggered)
+	{
+		return;
+	}
+
 	UWorld* World = GetWorld();
 	if (!World)
 	{
@@ -29,4 +52,5 @@ void AStealthLureActor::TriggerLure(const float LoudnessScale)
 	Ev.Lifetime = 2.f;
 	Ev.DebugLabel = TEXT("Lure");
 	Sim->PushSoundEvent(Ev);
+	bTriggered = true;
 }

@@ -69,7 +69,33 @@ enum class EStealthSoundSource : uint8
 	Lure UMETA(DisplayName = "Lure"),
 	Door UMETA(DisplayName = "Door"),
 	Objective UMETA(DisplayName = "Objective"),
+	Takedown UMETA(DisplayName = "Takedown"),
 	Fallback UMETA(DisplayName = "Fallback")
+};
+
+UENUM(BlueprintType)
+enum class EStealthTeam : uint8
+{
+	Neutral UMETA(DisplayName = "Neutral"),
+	Player UMETA(DisplayName = "Player"),
+	Guard UMETA(DisplayName = "Guard")
+};
+
+UENUM(BlueprintType)
+enum class EStealthDamageKind : uint8
+{
+	Generic UMETA(DisplayName = "Generic"),
+	NonLethal UMETA(DisplayName = "Non-Lethal"),
+	Lethal UMETA(DisplayName = "Lethal"),
+	Environmental UMETA(DisplayName = "Environmental")
+};
+
+UENUM(BlueprintType)
+enum class EStealthVitalState : uint8
+{
+	Alive UMETA(DisplayName = "Alive"),
+	Downed UMETA(DisplayName = "Downed"),
+	Dead UMETA(DisplayName = "Dead")
 };
 
 UENUM(BlueprintType)

@@ -1,16 +1,23 @@
 #include "Stealth/Components/StealthGuardBrainComponent.h"
 
 #include "AIController.h"
+#include "Stealth/Components/StealthHealthComponent.h"
 #include "Stealth/Actors/StealthPatrolRouteActor.h"
 #include "Stealth/Data/StealthTuningDataAsset.h"
 #include "Stealth/StealthLog.h"
 #include "Stealth/Subsystems/StealthSimulationSubsystem.h"
 
 #include "DrawDebugHelpers.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/Pawn.h"
+#include "Kismet/GameplayStatics.h"
 #include "Navigation/PathFollowingComponent.h"
+#include "Sound/SoundBase.h"
 
 static TAutoConsoleVariable<int32> CVarStealthGuardDebugDrawBrain(
 	TEXT("stealth.DebugDraw"),
@@ -37,6 +44,8 @@ static float GetSoundEvidencePoints(const UStealthTuningDataAsset* Tuning, EStea
 		return Tuning->DoorEvidence;
 	case EStealthSoundSource::Objective:
 		return Tuning->ObjectiveEvidence;
+	case EStealthSoundSource::Takedown:
+		return Tuning->TakedownEvidence;
 	default:
 		return Tuning->FallbackEvidence;
 	}
@@ -85,6 +94,27 @@ void UStealthGuardBrainComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	if (!OwnerPawn)
 	{
 		return;
+	}
+
+	if (const UStealthHealthComponent* Health = OwnerActor->FindComponentByClass<UStealthHealthComponent>())
+	{
+		if (!Health->IsAlive())
+		{
+			bIncapacitated = true;
+			bCombatLocked = false;
+			Suspicion.Value = 0.f;
+			Suspicion.State = EGuardSuspicionState::Unaware;
+			Suspicion.bHadAuditoryStimulus = false;
+			Suspicion.bHadVisualStimulus = false;
+			Suspicion.LastReason = TEXT("Incapacitated");
+			Brain.Mode = EGuardBrainMode::Pause;
+			if (AAIController* AI = Cast<AAIController>(OwnerPawn->GetController()))
+			{
+				AI->StopMovement();
+				AI->ClearFocus(EAIFocusPriority::Gameplay);
+			}
+			return;
+		}
 	}
 
 	UWorld* World = GetWorld();
@@ -297,6 +327,129 @@ void UStealthGuardBrainComponent::RefreshSuspicionBucket(const UStealthTuningDat
 	}
 }
 
+bool UStealthGuardBrainComponent::CanBeBackTakedownBy(APawn* InteractingPawn) const
+{
+	const APawn* OwnerPawn = Cast<APawn>(GetOwner());
+	if (!OwnerPawn || !InteractingPawn || bIncapacitated || bCombatLocked)
+	{
+		return false;
+	}
+
+	if (const UStealthHealthComponent* Health = OwnerPawn->FindComponentByClass<UStealthHealthComponent>())
+	{
+		if (!Health->IsAlive())
+		{
+			return false;
+		}
+	}
+
+	if (Suspicion.State == EGuardSuspicionState::Alert)
+	{
+		return false;
+	}
+
+	const FVector OwnerLocation = OwnerPawn->GetActorLocation();
+	const FVector InteractorLocation = InteractingPawn->GetActorLocation();
+	if (FVector::Dist2D(OwnerLocation, InteractorLocation) > BackTakedownRange)
+	{
+		return false;
+	}
+
+	FVector ToInteractor = InteractorLocation - OwnerLocation;
+	ToInteractor.Z = 0.f;
+	if (!ToInteractor.Normalize())
+	{
+		return false;
+	}
+
+	FVector GuardForward = OwnerPawn->GetActorForwardVector();
+	GuardForward.Z = 0.f;
+	if (!GuardForward.Normalize())
+	{
+		return false;
+	}
+
+	const float Dot = FVector::DotProduct(GuardForward, ToInteractor);
+	const float BehindThreshold = -FMath::Cos(FMath::DegreesToRadians(BackTakedownHalfAngleDegrees));
+	return Dot <= BehindThreshold;
+}
+
+bool UStealthGuardBrainComponent::TryBackTakedown(APawn* InteractingPawn)
+{
+	if (!CanBeBackTakedownBy(InteractingPawn))
+	{
+		return false;
+	}
+
+	APawn* OwnerPawn = Cast<APawn>(GetOwner());
+	if (!OwnerPawn)
+	{
+		return false;
+	}
+
+	bool bAppliedDamage = false;
+	if (UStealthHealthComponent* Health = OwnerPawn->FindComponentByClass<UStealthHealthComponent>())
+	{
+		const float Applied = Health->ApplyStealthDamage(BackTakedownDamage, EStealthDamageKind::NonLethal, InteractingPawn,
+			InteractingPawn ? InteractingPawn->GetController() : nullptr, TEXT("BackTakedown"));
+		bAppliedDamage = Applied > 0.f || !Health->IsAlive();
+	}
+
+	if (!bAppliedDamage)
+	{
+		return false;
+	}
+
+	bIncapacitated = true;
+	bCombatLocked = false;
+	Suspicion = FSuspicionState();
+	Suspicion.LastReason = TEXT("Incapacitated");
+	Brain.Mode = EGuardBrainMode::Pause;
+
+	if (AAIController* AI = Cast<AAIController>(OwnerPawn->GetController()))
+	{
+		AI->StopMovement();
+		AI->ClearFocus(EAIFocusPriority::Gameplay);
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		if (UStealthSimulationSubsystem* Sim = World->GetSubsystem<UStealthSimulationSubsystem>())
+		{
+			FStealthSoundEvent Ev;
+			Ev.Position = OwnerPawn->GetActorLocation();
+			Ev.Loudness = BackTakedownSoundLoudness;
+			Ev.Radius = BackTakedownSoundRadius;
+			Ev.SourceType = EStealthSoundSource::Takedown;
+			Ev.Lifetime = 0.75f;
+			Ev.DebugLabel = TEXT("Takedown");
+			Sim->PushSoundEvent(Ev);
+		}
+
+		if (BackTakedownPresentationSound)
+		{
+			UGameplayStatics::PlaySoundAtLocation(World, BackTakedownPresentationSound, OwnerPawn->GetActorLocation(),
+				BackTakedownPresentationVolume, BackTakedownPresentationPitch);
+		}
+	}
+
+	if (BackTakedownVictimMontage)
+	{
+		if (ACharacter* Char = Cast<ACharacter>(OwnerPawn))
+		{
+			if (USkeletalMeshComponent* Skel = Char->GetMesh())
+			{
+				if (UAnimInstance* AnimInst = Skel->GetAnimInstance())
+				{
+					AnimInst->Montage_Play(BackTakedownVictimMontage, 1.f);
+				}
+			}
+		}
+	}
+
+	return true;
+}
+
 void UStealthGuardBrainComponent::UpdateBrainMode(UStealthSimulationSubsystem* Sim)
 {
 	(void)Sim;
@@ -342,6 +495,13 @@ void UStealthGuardBrainComponent::ApplyStealthMovement(AAIController* AI, float 
 	APawn* OwnerPawn = Cast<APawn>(GetOwner());
 	if (!OwnerPawn)
 	{
+		return;
+	}
+
+	if (bIncapacitated)
+	{
+		AI->StopMovement();
+		AI->ClearFocus(EAIFocusPriority::Gameplay);
 		return;
 	}
 
@@ -571,7 +731,8 @@ bool UStealthGuardBrainComponent::ComputeAuditoryStimulus(const UStealthSimulati
 
 FString UStealthGuardBrainComponent::GetDebugBrainLine() const
 {
-	return FString::Printf(TEXT("Brain=%d Sus=%.0f State=%d Combat=%d See=%d Hear=%d | %s"),
+	return FString::Printf(TEXT("Brain=%d Sus=%.0f State=%d Combat=%d Down=%d See=%d Hear=%d | %s"),
 		static_cast<int32>(Brain.Mode), Suspicion.Value, static_cast<int32>(Suspicion.State), bCombatLocked ? 1 : 0,
-		Suspicion.bHadVisualStimulus ? 1 : 0, Suspicion.bHadAuditoryStimulus ? 1 : 0, *Suspicion.LastReason);
+		bIncapacitated ? 1 : 0, Suspicion.bHadVisualStimulus ? 1 : 0, Suspicion.bHadAuditoryStimulus ? 1 : 0,
+		*Suspicion.LastReason);
 }

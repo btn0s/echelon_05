@@ -91,6 +91,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LightSampling", meta = (ClampMin = 1))
 	float SceneLightIntensityNormalization = 1500.f;
 
+	/** Converts normalized local-light energy to visibility exposure after renderer-shaped attenuation. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LightSampling", meta = (ClampMin = 0))
+	float SceneLightLocalExposureResponse = 2.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LightSampling", meta = (ClampMin = 0, ClampMax = 1))
 	float SceneLightDirectionalExposureScale = 1.f;
 
@@ -159,6 +163,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 0, ClampMax = 100))
 	float ObjectiveEvidence = 35.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 0, ClampMax = 100))
+	float TakedownEvidence = 25.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Suspicion", meta = (ClampMin = 0, ClampMax = 100))
 	float FallbackEvidence = 20.f;

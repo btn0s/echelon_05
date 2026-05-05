@@ -2,6 +2,7 @@
 
 #include "Stealth/Actors/StealthLightVolume.h"
 #include "Stealth/Components/StealthGuardBrainComponent.h"
+#include "Stealth/Components/StealthHealthComponent.h"
 #include "Stealth/Data/StealthTuningDataAsset.h"
 #include "Stealth/StealthLog.h"
 
@@ -34,6 +35,7 @@ void UStealthSimulationSubsystem::Deinitialize()
 	LightVolumes.Reset();
 	CachedSceneLights.Reset();
 	GuardBrains.Reset();
+	HealthComponents.Reset();
 	ActiveSoundEvents.Reset();
 	Super::Deinitialize();
 }
@@ -67,6 +69,7 @@ void UStealthSimulationSubsystem::ResetSimulation()
 	ObjectiveState = FObjectiveState();
 	ExtractionState = FExtractionState();
 	AlarmState = FAlarmState();
+	ObjectiveRecords.Reset();
 	bAlertOccurred = false;
 	MissionOutcome = EStealthMissionOutcome::None;
 	PlayerSmoothedLightExposure = 0.f;
@@ -74,6 +77,7 @@ void UStealthSimulationSubsystem::ResetSimulation()
 	LastSceneLightCacheTime = -100000.f;
 	CachedSceneLights.Reset();
 	CachedPPVIndirectScale = 1.f;
+	CachedPPVExposureScale = 1.f;
 }
 
 void UStealthSimulationSubsystem::SetTuningAsset(UStealthTuningDataAsset* InTuning)
@@ -142,6 +146,122 @@ void UStealthSimulationSubsystem::UnregisterGuardBrain(UStealthGuardBrainCompone
 	GuardBrains.Remove(Brain);
 }
 
+void UStealthSimulationSubsystem::RegisterHealthComponent(UStealthHealthComponent* HealthComponent)
+{
+	if (HealthComponent)
+	{
+		HealthComponents.AddUnique(HealthComponent);
+	}
+}
+
+void UStealthSimulationSubsystem::UnregisterHealthComponent(UStealthHealthComponent* HealthComponent)
+{
+	HealthComponents.Remove(HealthComponent);
+}
+
+FName UStealthSimulationSubsystem::RegisterObjective(AActor* ObjectiveActor, FName ObjectiveId, FText DisplayName,
+	bool bRequired)
+{
+	if (!ObjectiveActor)
+	{
+		return NAME_None;
+	}
+
+	const FName ResolvedId = ObjectiveId.IsNone() ? ObjectiveActor->GetFName() : ObjectiveId;
+	const FText ResolvedName = DisplayName.IsEmpty() ? FText::FromName(ResolvedId) : DisplayName;
+
+	int32 Index = FindObjectiveIndexByActor(ObjectiveActor);
+	if (Index == INDEX_NONE)
+	{
+		Index = FindObjectiveIndexById(ResolvedId);
+	}
+
+	if (Index == INDEX_NONE)
+	{
+		FStealthObjectiveRecord& Record = ObjectiveRecords.AddDefaulted_GetRef();
+		Record.ObjectiveId = ResolvedId;
+		Record.DisplayName = ResolvedName;
+		Record.bRequired = bRequired;
+		Record.SourceActor = ObjectiveActor;
+	}
+	else
+	{
+		FStealthObjectiveRecord& Record = ObjectiveRecords[Index];
+		Record.ObjectiveId = ResolvedId;
+		Record.DisplayName = ResolvedName;
+		Record.bRequired = bRequired;
+		Record.SourceActor = ObjectiveActor;
+	}
+
+	RecomputeObjectiveStateFromRecords();
+	RefreshObjectiveExtractionGating();
+	return ResolvedId;
+}
+
+void UStealthSimulationSubsystem::UnregisterObjective(AActor* ObjectiveActor)
+{
+	if (!ObjectiveActor)
+	{
+		return;
+	}
+
+	ObjectiveRecords.RemoveAll([ObjectiveActor](const FStealthObjectiveRecord& Record)
+	{
+		return Record.SourceActor == ObjectiveActor;
+	});
+
+	RecomputeObjectiveStateFromRecords();
+	RefreshObjectiveExtractionGating();
+}
+
+bool UStealthSimulationSubsystem::CompleteObjective(AActor* ObjectiveActor, APawn* InstigatorPawn)
+{
+	(void)InstigatorPawn;
+
+	const int32 Index = FindObjectiveIndexByActor(ObjectiveActor);
+	if (Index == INDEX_NONE)
+	{
+		return false;
+	}
+
+	FStealthObjectiveRecord& Record = ObjectiveRecords[Index];
+	if (Record.bCompleted)
+	{
+		return false;
+	}
+
+	Record.bCompleted = true;
+	Record.CompletedTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+
+	RecomputeObjectiveStateFromRecords();
+	RefreshObjectiveExtractionGating();
+	return true;
+}
+
+bool UStealthSimulationSubsystem::CompleteObjectiveById(FName ObjectiveId, APawn* InstigatorPawn)
+{
+	(void)InstigatorPawn;
+
+	const int32 Index = FindObjectiveIndexById(ObjectiveId);
+	if (Index == INDEX_NONE)
+	{
+		return false;
+	}
+
+	FStealthObjectiveRecord& Record = ObjectiveRecords[Index];
+	if (Record.bCompleted)
+	{
+		return false;
+	}
+
+	Record.bCompleted = true;
+	Record.CompletedTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+
+	RecomputeObjectiveStateFromRecords();
+	RefreshObjectiveExtractionGating();
+	return true;
+}
+
 void UStealthSimulationSubsystem::SetObjectiveState(const FObjectiveState& State)
 {
 	ObjectiveState = State;
@@ -166,6 +286,71 @@ void UStealthSimulationSubsystem::MarkAlertOccurred()
 void UStealthSimulationSubsystem::SetMissionOutcome(EStealthMissionOutcome Outcome)
 {
 	MissionOutcome = Outcome;
+}
+
+bool UStealthSimulationSubsystem::AreRequiredObjectivesComplete() const
+{
+	if (ObjectiveRecords.Num() == 0)
+	{
+		return ObjectiveState.bCompleted;
+	}
+
+	bool bHasRequired = false;
+	for (const FStealthObjectiveRecord& Record : ObjectiveRecords)
+	{
+		if (!Record.bRequired)
+		{
+			continue;
+		}
+
+		bHasRequired = true;
+		if (!Record.bCompleted)
+		{
+			return false;
+		}
+	}
+
+	return bHasRequired ? true : ObjectiveState.bCompleted;
+}
+
+int32 UStealthSimulationSubsystem::GetRequiredObjectiveCount() const
+{
+	int32 Count = 0;
+	for (const FStealthObjectiveRecord& Record : ObjectiveRecords)
+	{
+		if (Record.bRequired)
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+
+int32 UStealthSimulationSubsystem::GetCompletedRequiredObjectiveCount() const
+{
+	int32 Count = 0;
+	for (const FStealthObjectiveRecord& Record : ObjectiveRecords)
+	{
+		if (Record.bRequired && Record.bCompleted)
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+
+FStealthHealthState UStealthSimulationSubsystem::GetPlayerHealthState() const
+{
+	for (const TWeakObjectPtr<UStealthHealthComponent>& HealthPtr : HealthComponents)
+	{
+		const UStealthHealthComponent* Health = HealthPtr.Get();
+		if (Health && Health->GetTeam() == EStealthTeam::Player)
+		{
+			return Health->GetHealthState();
+		}
+	}
+
+	return FStealthHealthState();
 }
 
 namespace StealthLightSamplingPrivate
@@ -240,19 +425,45 @@ namespace StealthLightSamplingPrivate
 		return Applied;
 	}
 
-	static float EvaluatePointLike(float Intensity, float Distance, float AttenuationRadius, float Normalization)
+	static float EvaluateRendererRadiusMask(float Distance, float AttenuationRadius, bool bInverseSquared, float FalloffExponent)
 	{
 		if (AttenuationRadius <= KINDA_SMALL_NUMBER || Distance > AttenuationRadius)
 		{
 			return 0.f;
 		}
-		const float Falloff = FMath::Pow(1.f - Distance / AttenuationRadius, 2.f);
-		return FMath::Clamp(Intensity / FMath::Max(1.f, Normalization), 0.f, 4.f) * Falloff;
+
+		const float DistanceSqr = FMath::Square(Distance);
+		const float RadiusSqr = FMath::Square(AttenuationRadius);
+		const float DistanceSqrOverRadiusSqr = FMath::Clamp(DistanceSqr / FMath::Max(RadiusSqr, KINDA_SMALL_NUMBER), 0.f, 1.f);
+
+		if (bInverseSquared)
+		{
+			return FMath::Square(1.f - FMath::Square(DistanceSqrOverRadiusSqr));
+		}
+
+		return FMath::Pow(1.f - DistanceSqrOverRadiusSqr, FMath::Max(FalloffExponent, KINDA_SMALL_NUMBER));
+	}
+
+	static float EvaluateLocalLightExposure(float Intensity, float Distance, float AttenuationRadius, bool bInverseSquared,
+		float FalloffExponent, float ExposureScale, const UStealthTuningDataAsset* Tuning)
+	{
+		if (!Tuning)
+		{
+			return 0.f;
+		}
+
+		const float RadiusMask = EvaluateRendererRadiusMask(Distance, AttenuationRadius, bInverseSquared, FalloffExponent);
+		const float NormalizedEnergy =
+			(FMath::Max(0.f, Intensity) * FMath::Max(0.f, ExposureScale)) /
+			FMath::Max(1.f, Tuning->SceneLightIntensityNormalization);
+		const float Response = FMath::Max(0.f, Tuning->SceneLightLocalExposureResponse);
+
+		return FMath::Clamp(1.f - FMath::Exp(-NormalizedEnergy * RadiusMask * Response), 0.f, 1.f);
 	}
 
 	static float EvaluatePointLight(const UPointLightComponent* PL, const FVector& SampleWorldPosition,
 		const UStealthTuningDataAsset* Tuning, UWorld* World, const AActor* OcclusionIgnoreActor, ECollisionChannel Channel,
-		FStealthLightContributionDebug* OutDebug)
+		float ExposureScale, FStealthLightContributionDebug* OutDebug)
 	{
 		if (!PL || !World || !Tuning)
 		{
@@ -268,7 +479,8 @@ namespace StealthLightSamplingPrivate
 		const FVector TraceTarget = LLoc;
 		const bool bOccluded = OcclusionHitWorld(World, SampleWorldPosition, TraceTarget, OcclusionIgnoreActor, Channel);
 
-		float Applied = EvaluatePointLike(PL->Intensity, Dist, PL->AttenuationRadius, Tuning->SceneLightIntensityNormalization);
+		float Applied = EvaluateLocalLightExposure(PL->Intensity, Dist, PL->AttenuationRadius,
+			PL->bUseInverseSquaredFalloff != 0, PL->LightFalloffExponent, ExposureScale, Tuning);
 		if (bOccluded)
 		{
 			Applied = 0.f;
@@ -288,7 +500,7 @@ namespace StealthLightSamplingPrivate
 
 	static float EvaluateSpotLight(const USpotLightComponent* SL, const FVector& SampleWorldPosition,
 		const UStealthTuningDataAsset* Tuning, UWorld* World, const AActor* OcclusionIgnoreActor, ECollisionChannel Channel,
-		FStealthLightContributionDebug* OutDebug)
+		float ExposureScale, FStealthLightContributionDebug* OutDebug)
 	{
 		if (!SL || !World || !Tuning)
 		{
@@ -322,7 +534,8 @@ namespace StealthLightSamplingPrivate
 		const bool bOccluded = OcclusionHitWorld(World, SampleWorldPosition, TraceTarget, OcclusionIgnoreActor, Channel);
 
 		float Applied =
-			EvaluatePointLike(SL->Intensity, Dist, SL->AttenuationRadius, Tuning->SceneLightIntensityNormalization) * ConeMul;
+			EvaluateLocalLightExposure(SL->Intensity, Dist, SL->AttenuationRadius,
+				SL->bUseInverseSquaredFalloff != 0, SL->LightFalloffExponent, ExposureScale, Tuning) * ConeMul;
 		if (bOccluded)
 		{
 			Applied = 0.f;
@@ -342,7 +555,7 @@ namespace StealthLightSamplingPrivate
 
 	static float EvaluateRectLight(const URectLightComponent* RL, const FVector& SampleWorldPosition,
 		const UStealthTuningDataAsset* Tuning, UWorld* World, const AActor* OcclusionIgnoreActor, ECollisionChannel Channel,
-		FStealthLightContributionDebug* OutDebug)
+		float ExposureScale, FStealthLightContributionDebug* OutDebug)
 	{
 		if (!RL || !World || !Tuning)
 		{
@@ -358,7 +571,8 @@ namespace StealthLightSamplingPrivate
 		const FVector TraceTarget = LLoc;
 		const bool bOccluded = OcclusionHitWorld(World, SampleWorldPosition, TraceTarget, OcclusionIgnoreActor, Channel);
 
-		float Applied = EvaluatePointLike(RL->Intensity, Dist, RL->AttenuationRadius, Tuning->SceneLightIntensityNormalization);
+		float Applied = EvaluateLocalLightExposure(RL->Intensity, Dist, RL->AttenuationRadius,
+			false, 2.f, ExposureScale, Tuning);
 		if (bOccluded)
 		{
 			Applied = 0.f;
@@ -435,30 +649,34 @@ void UStealthSimulationSubsystem::RefreshSceneLightCache(float WorldTimeSeconds)
 		}
 	}
 
-	RefreshPPVIndirectScale();
+	RefreshPPVLightScales();
 }
 
-void UStealthSimulationSubsystem::RefreshPPVIndirectScale()
+void UStealthSimulationSubsystem::RefreshPPVLightScales()
 {
 	UWorld* World = GetWorld();
 	if (!World)
 	{
 		CachedPPVIndirectScale = 1.f;
+		CachedPPVExposureScale = 1.f;
 		return;
 	}
 
-	struct FIndirectPPVBlend
+	struct FPPVLightBlend
 	{
 		float Priority = 0.f;
 		float BlendWeight = 0.f;
 		float IndirectLightingIntensity = 1.f;
+		float AutoExposureBias = 0.f;
+		bool bOverridesIndirectLightingIntensity = false;
+		bool bOverridesAutoExposureBias = false;
 		FString StableName;
 	};
 
-	TArray<FIndirectPPVBlend> Blends;
+	TArray<FPPVLightBlend> Blends;
 
-	// Walk unbounded PostProcessVolumes that affect indirect lighting, then apply them in
-	// priority order. This keeps stealth ambient in step with post-process blending instead
+	// Walk unbounded PostProcessVolumes that affect stealth light interpretation, then apply
+	// them in priority order. This keeps the sim in step with post-process blending instead
 	// of depending on TActorIterator order.
 	for (TActorIterator<APostProcessVolume> It(World); It; ++It)
 	{
@@ -468,7 +686,7 @@ void UStealthSimulationSubsystem::RefreshPPVIndirectScale()
 			continue;
 		}
 
-		if (PPV->Settings.bOverride_IndirectLightingIntensity)
+		if (PPV->Settings.bOverride_IndirectLightingIntensity || PPV->Settings.bOverride_AutoExposureBias)
 		{
 			const float BlendWeight = FMath::Clamp(PPV->BlendWeight, 0.f, 1.f);
 			if (BlendWeight <= UE_KINDA_SMALL_NUMBER)
@@ -476,15 +694,24 @@ void UStealthSimulationSubsystem::RefreshPPVIndirectScale()
 				continue;
 			}
 
-			FIndirectPPVBlend& Blend = Blends.AddDefaulted_GetRef();
+			FPPVLightBlend& Blend = Blends.AddDefaulted_GetRef();
 			Blend.Priority = PPV->Priority;
 			Blend.BlendWeight = BlendWeight;
-			Blend.IndirectLightingIntensity = FMath::Clamp(PPV->Settings.IndirectLightingIntensity, 0.f, 1.f);
+			Blend.bOverridesIndirectLightingIntensity = PPV->Settings.bOverride_IndirectLightingIntensity;
+			Blend.bOverridesAutoExposureBias = PPV->Settings.bOverride_AutoExposureBias;
+			if (Blend.bOverridesIndirectLightingIntensity)
+			{
+				Blend.IndirectLightingIntensity = FMath::Clamp(PPV->Settings.IndirectLightingIntensity, 0.f, 1.f);
+			}
+			if (Blend.bOverridesAutoExposureBias)
+			{
+				Blend.AutoExposureBias = PPV->Settings.AutoExposureBias;
+			}
 			Blend.StableName = PPV->GetName();
 		}
 	}
 
-	Blends.Sort([](const FIndirectPPVBlend& A, const FIndirectPPVBlend& B)
+	Blends.Sort([](const FPPVLightBlend& A, const FPPVLightBlend& B)
 	{
 		if (!FMath::IsNearlyEqual(A.Priority, B.Priority))
 		{
@@ -494,13 +721,22 @@ void UStealthSimulationSubsystem::RefreshPPVIndirectScale()
 		return A.StableName < B.StableName;
 	});
 
-	float Scale = 1.f;
-	for (const FIndirectPPVBlend& Blend : Blends)
+	float IndirectScale = 1.f;
+	float ExposureBias = 0.f;
+	for (const FPPVLightBlend& Blend : Blends)
 	{
-		Scale = FMath::Lerp(Scale, Blend.IndirectLightingIntensity, Blend.BlendWeight);
+		if (Blend.bOverridesIndirectLightingIntensity)
+		{
+			IndirectScale = FMath::Lerp(IndirectScale, Blend.IndirectLightingIntensity, Blend.BlendWeight);
+		}
+		if (Blend.bOverridesAutoExposureBias)
+		{
+			ExposureBias = FMath::Lerp(ExposureBias, Blend.AutoExposureBias, Blend.BlendWeight);
+		}
 	}
 
-	CachedPPVIndirectScale = Scale;
+	CachedPPVIndirectScale = IndirectScale;
+	CachedPPVExposureScale = FMath::Pow(2.f, ExposureBias);
 }
 
 float UStealthSimulationSubsystem::ComputeSceneLightExposureAt(const FVector& SampleWorldPosition,
@@ -539,17 +775,17 @@ float UStealthSimulationSubsystem::ComputeSceneLightExposureAt(const FVector& Sa
 		else if (USpotLightComponent* SL = Cast<USpotLightComponent>(LightBase))
 		{
 			Added = StealthLightSamplingPrivate::EvaluateSpotLight(
-				SL, SampleWorldPosition, TuningAsset, World, OcclusionIgnoreActor, Channel, &Row);
+				SL, SampleWorldPosition, TuningAsset, World, OcclusionIgnoreActor, Channel, CachedPPVExposureScale, &Row);
 		}
 		else if (UPointLightComponent* PL = Cast<UPointLightComponent>(LightBase))
 		{
 			Added = StealthLightSamplingPrivate::EvaluatePointLight(
-				PL, SampleWorldPosition, TuningAsset, World, OcclusionIgnoreActor, Channel, &Row);
+				PL, SampleWorldPosition, TuningAsset, World, OcclusionIgnoreActor, Channel, CachedPPVExposureScale, &Row);
 		}
 		else if (URectLightComponent* RL = Cast<URectLightComponent>(LightBase))
 		{
 			Added = StealthLightSamplingPrivate::EvaluateRectLight(
-				RL, SampleWorldPosition, TuningAsset, World, OcclusionIgnoreActor, Channel, &Row);
+				RL, SampleWorldPosition, TuningAsset, World, OcclusionIgnoreActor, Channel, CachedPPVExposureScale, &Row);
 		}
 		else
 		{
@@ -740,11 +976,77 @@ void UStealthSimulationSubsystem::ExpireSoundEvents(float WorldTimeSeconds)
 
 void UStealthSimulationSubsystem::RefreshObjectiveExtractionGating()
 {
+	if (ObjectiveRecords.Num() > 0)
+	{
+		RecomputeObjectiveStateFromRecords();
+	}
+
 	FExtractionState Next = ExtractionState;
-	Next.bAvailable = ObjectiveState.bCompleted;
-	if (!ObjectiveState.bCompleted)
+	Next.bAvailable = AreRequiredObjectivesComplete();
+	if (!Next.bAvailable)
 	{
 		Next.bUsed = false;
 	}
 	ExtractionState = Next;
+}
+
+void UStealthSimulationSubsystem::RecomputeObjectiveStateFromRecords()
+{
+	if (ObjectiveRecords.Num() == 0)
+	{
+		return;
+	}
+
+	bool bHasRequired = false;
+	bool bAllRequiredCompleted = true;
+	bool bAnyCompleted = false;
+
+	for (const FStealthObjectiveRecord& Record : ObjectiveRecords)
+	{
+		bAnyCompleted |= Record.bCompleted;
+		if (Record.bRequired)
+		{
+			bHasRequired = true;
+			bAllRequiredCompleted &= Record.bCompleted;
+		}
+	}
+
+	ObjectiveState.bRequired = bHasRequired;
+	ObjectiveState.bCompleted = bHasRequired ? bAllRequiredCompleted : bAnyCompleted;
+}
+
+int32 UStealthSimulationSubsystem::FindObjectiveIndexByActor(const AActor* ObjectiveActor) const
+{
+	if (!ObjectiveActor)
+	{
+		return INDEX_NONE;
+	}
+
+	for (int32 i = 0; i < ObjectiveRecords.Num(); ++i)
+	{
+		if (ObjectiveRecords[i].SourceActor == ObjectiveActor)
+		{
+			return i;
+		}
+	}
+
+	return INDEX_NONE;
+}
+
+int32 UStealthSimulationSubsystem::FindObjectiveIndexById(FName ObjectiveId) const
+{
+	if (ObjectiveId.IsNone())
+	{
+		return INDEX_NONE;
+	}
+
+	for (int32 i = 0; i < ObjectiveRecords.Num(); ++i)
+	{
+		if (ObjectiveRecords[i].ObjectiveId == ObjectiveId)
+		{
+			return i;
+		}
+	}
+
+	return INDEX_NONE;
 }

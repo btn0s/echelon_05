@@ -1,6 +1,7 @@
 #include "Stealth/Components/StealthEmitterComponent.h"
 
 #include "Stealth/Data/StealthTuningDataAsset.h"
+#include "Stealth/Components/StealthHealthComponent.h"
 #include "Stealth/Subsystems/StealthSimulationSubsystem.h"
 
 #include "DrawDebugHelpers.h"
@@ -13,6 +14,12 @@ UStealthEmitterComponent::UStealthEmitterComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.TickGroup = TG_PostPhysics;
+}
+
+void UStealthEmitterComponent::BeginPlay()
+{
+	Super::BeginPlay();
+	EnsureOwnerHealthComponent();
 }
 
 void UStealthEmitterComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -64,6 +71,58 @@ void UStealthEmitterComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 				LDebug.RawMaxExposure, LDebug.SmoothedExposure, LDebug.CachedLightCount),
 			nullptr, FColor::Yellow, 0.f, true, 1.15f);
 	}
+}
+
+void UStealthEmitterComponent::EnsureOwnerHealthComponent()
+{
+	if (!bEnsureOwnerHasPlayerHealth)
+	{
+		return;
+	}
+
+	AActor* Owner = GetOwner();
+	if (!Owner)
+	{
+		return;
+	}
+
+	if (UStealthHealthComponent* ExistingHealth = Owner->FindComponentByClass<UStealthHealthComponent>())
+	{
+		if (ExistingHealth->GetTeam() == EStealthTeam::Neutral)
+		{
+			ExistingHealth->SetTeam(EStealthTeam::Player);
+		}
+		ApplyPresentationToRuntimeHealth(ExistingHealth);
+		RuntimeHealthComponent = ExistingHealth;
+		return;
+	}
+
+	UStealthHealthComponent* NewHealth = NewObject<UStealthHealthComponent>(Owner, TEXT("StealthHealth"));
+	if (!NewHealth)
+	{
+		return;
+	}
+
+	NewHealth->CreationMethod = EComponentCreationMethod::Instance;
+	NewHealth->Team = EStealthTeam::Player;
+	NewHealth->MaxHealth = DefaultPlayerMaxHealth;
+	NewHealth->StartingHealth = DefaultPlayerMaxHealth;
+	Owner->AddInstanceComponent(NewHealth);
+	NewHealth->RegisterComponent();
+	ApplyPresentationToRuntimeHealth(NewHealth);
+	RuntimeHealthComponent = NewHealth;
+}
+
+void UStealthEmitterComponent::ApplyPresentationToRuntimeHealth(UStealthHealthComponent* Health) const
+{
+	if (!Health)
+	{
+		return;
+	}
+
+	Health->DamageTakenSoundCue = PlayerDamagePresentationSound;
+	Health->DamageTakenSoundVolume = PlayerDamagePresentationVolume;
+	Health->DamageTakenCameraShake = PlayerDamagePresentationCameraShake;
 }
 
 void UStealthEmitterComponent::UpdateEmissions(float DeltaTime)

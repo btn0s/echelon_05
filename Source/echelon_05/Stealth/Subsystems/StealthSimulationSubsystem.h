@@ -10,6 +10,7 @@
 
 class AStealthLightVolume;
 class UStealthGuardBrainComponent;
+class UStealthHealthComponent;
 class UStealthTuningDataAsset;
 class ULightComponentBase;
 
@@ -92,6 +93,24 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Stealth")
 	void UnregisterGuardBrain(UStealthGuardBrainComponent* Brain);
 
+	UFUNCTION(BlueprintCallable, Category = "Stealth")
+	void RegisterHealthComponent(UStealthHealthComponent* HealthComponent);
+
+	UFUNCTION(BlueprintCallable, Category = "Stealth")
+	void UnregisterHealthComponent(UStealthHealthComponent* HealthComponent);
+
+	UFUNCTION(BlueprintCallable, Category = "Stealth")
+	FName RegisterObjective(AActor* ObjectiveActor, FName ObjectiveId, FText DisplayName, bool bRequired);
+
+	UFUNCTION(BlueprintCallable, Category = "Stealth")
+	void UnregisterObjective(AActor* ObjectiveActor);
+
+	UFUNCTION(BlueprintCallable, Category = "Stealth")
+	bool CompleteObjective(AActor* ObjectiveActor, APawn* InstigatorPawn);
+
+	UFUNCTION(BlueprintCallable, Category = "Stealth")
+	bool CompleteObjectiveById(FName ObjectiveId, APawn* InstigatorPawn);
+
 	UFUNCTION(BlueprintPure, Category = "Stealth")
 	FStealthMovementState GetPlayerMovement() const { return PlayerMovement; }
 
@@ -115,6 +134,18 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Stealth")
 	FObjectiveState GetObjectiveState() const { return ObjectiveState; }
+
+	UFUNCTION(BlueprintPure, Category = "Stealth")
+	TArray<FStealthObjectiveRecord> GetObjectiveRecords() const { return ObjectiveRecords; }
+
+	UFUNCTION(BlueprintPure, Category = "Stealth")
+	bool AreRequiredObjectivesComplete() const;
+
+	UFUNCTION(BlueprintPure, Category = "Stealth")
+	int32 GetRequiredObjectiveCount() const;
+
+	UFUNCTION(BlueprintPure, Category = "Stealth")
+	int32 GetCompletedRequiredObjectiveCount() const;
 
 	UFUNCTION(BlueprintPure, Category = "Stealth")
 	FExtractionState GetExtractionState() const { return ExtractionState; }
@@ -161,6 +192,11 @@ public:
 
 	TArray<TWeakObjectPtr<UStealthGuardBrainComponent>> GetRegisteredGuardBrains() const { return GuardBrains; }
 
+	UFUNCTION(BlueprintPure, Category = "Stealth")
+	FStealthHealthState GetPlayerHealthState() const;
+
+	TArray<TWeakObjectPtr<UStealthHealthComponent>> GetRegisteredHealthComponents() const { return HealthComponents; }
+
 	UPROPERTY(BlueprintAssignable, Category = "Stealth")
 	FOnStealthPlayerSnapshotUpdated OnPlayerSnapshotUpdated;
 
@@ -170,17 +206,19 @@ public:
 private:
 	void ExpireSoundEvents(float WorldTimeSeconds);
 	void RefreshObjectiveExtractionGating();
+	void RecomputeObjectiveStateFromRecords();
+	int32 FindObjectiveIndexByActor(const AActor* ObjectiveActor) const;
+	int32 FindObjectiveIndexById(FName ObjectiveId) const;
 	void RefreshSceneLightCache(float WorldTimeSeconds);
 	float ComputeSceneLightExposureAt(const FVector& SampleWorldPosition, const AActor* OcclusionIgnoreActor,
 		TArray<FStealthLightContributionDebug>* OutSortedContributions) const;
 
 	/**
-	 * Scans active unbounded PostProcessVolumes for IndirectLightingIntensity overrides and
-	 * caches the priority/blend-resolved result as a 0-1 scale. Called inside RefreshSceneLightCache
-	 * so it stays in sync with the light cache refresh cadence. When a PPV suppresses Lumen GI
-	 * (value 0), SceneLightAmbientExposure is driven to zero, matching what the renderer shows.
+	 * Scans active unbounded PostProcessVolumes for lighting-affecting overrides and caches
+	 * priority/blend-resolved scales. Called inside RefreshSceneLightCache so stealth sampling
+	 * stays in sync with the renderer contract for indirect lighting and exposure compensation.
 	 */
-	void RefreshPPVIndirectScale();
+	void RefreshPPVLightScales();
 
 	UPROPERTY()
 	TObjectPtr<UStealthTuningDataAsset> TuningAsset;
@@ -198,6 +236,7 @@ private:
 	TArray<TWeakObjectPtr<AStealthLightVolume>> LightVolumes;
 	TArray<TWeakObjectPtr<ULightComponentBase>> CachedSceneLights;
 	TArray<TWeakObjectPtr<UStealthGuardBrainComponent>> GuardBrains;
+	TArray<TWeakObjectPtr<UStealthHealthComponent>> HealthComponents;
 
 	float LastSceneLightCacheTime = -100000.f;
 	float PlayerSmoothedLightExposure = 0.f;
@@ -206,9 +245,13 @@ private:
 	/** Cached scale derived from active unbounded PPV IndirectLightingIntensity override (1 if none found). */
 	float CachedPPVIndirectScale = 1.f;
 
+	/** Cached EV exposure scale derived from active unbounded PPV AutoExposureBias override (1 if none found). */
+	float CachedPPVExposureScale = 1.f;
+
 	FObjectiveState ObjectiveState;
 	FExtractionState ExtractionState;
 	FAlarmState AlarmState;
+	TArray<FStealthObjectiveRecord> ObjectiveRecords;
 
 	bool bAlertOccurred = false;
 	EStealthMissionOutcome MissionOutcome = EStealthMissionOutcome::None;

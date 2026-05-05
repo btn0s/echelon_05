@@ -17,5 +17,11 @@ class IStealthInteractable
 
 public:
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Stealth")
+	bool CanStealthInteract(APawn* Instigator);
+
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Stealth")
+	FText GetStealthInteractionText(APawn* Instigator);
+
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Stealth")
 	void StealthInteract(APawn* Instigator);
 };

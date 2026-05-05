@@ -8,7 +8,20 @@
 
 class UStealthGuardBrainComponent;
 
-/** Lightweight screen-space guard status plate for prototype stealth readability. */
+/**
+ * World-space guard suspicion plate.
+ *
+ * Visual contract: Docs/ui/DESIGN.md `### Guard Suspicion Plate`.
+ *
+ *   Unaware       hidden plate
+ *   Curious       1 tick + dim corner brackets
+ *   Suspicious    2 ticks
+ *   Investigating 3-4 ticks (escalates with the suspicion value)
+ *   Alert         inverted white block, black `ALERT` label
+ *
+ * Monochrome only — no traffic-light hue. Brightness, tick count, and the
+ * single inverted-block treatment encode threat.
+ */
 UCLASS()
 class UStealthGuardStatusWidget : public UUserWidget
 {

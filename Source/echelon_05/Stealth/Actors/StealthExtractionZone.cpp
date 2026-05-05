@@ -20,39 +20,81 @@ AStealthExtractionZone::AStealthExtractionZone()
 	Trigger->OnComponentBeginOverlap.AddDynamic(this, &AStealthExtractionZone::OnOverlapBegin);
 }
 
+bool AStealthExtractionZone::CanStealthInteract_Implementation(APawn* InteractingPawn)
+{
+	(void)InteractingPawn;
+
+	if (const UWorld* World = GetWorld())
+	{
+		if (const UStealthSimulationSubsystem* Sim = World->GetSubsystem<UStealthSimulationSubsystem>())
+		{
+			const FExtractionState Ext = Sim->GetExtractionState();
+			return Sim->AreRequiredObjectivesComplete() && Ext.bAvailable && !Ext.bUsed;
+		}
+	}
+
+	return false;
+}
+
+FText AStealthExtractionZone::GetStealthInteractionText_Implementation(APawn* InteractingPawn)
+{
+	(void)InteractingPawn;
+	return NSLOCTEXT("StealthExtractionZone", "ExtractText", "Extract");
+}
+
+void AStealthExtractionZone::StealthInteract_Implementation(APawn* InteractingPawn)
+{
+	TryExtract(InteractingPawn);
+}
+
 void AStealthExtractionZone::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* Other, UPrimitiveComponent* OtherComp,
 	int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
+	if (!bAutoExtractOnOverlap)
+	{
+		return;
+	}
+
 	APawn* Pawn = Cast<APawn>(Other);
 	if (!Pawn || !Pawn->IsPlayerControlled())
 	{
 		return;
 	}
 
+	TryExtract(Pawn);
+}
+
+bool AStealthExtractionZone::TryExtract(APawn* InteractingPawn)
+{
+	APawn* Pawn = InteractingPawn;
+	if (!Pawn || !Pawn->IsPlayerControlled())
+	{
+		return false;
+	}
+
 	UWorld* World = GetWorld();
 	if (!World)
 	{
-		return;
+		return false;
 	}
 
 	UStealthSimulationSubsystem* Sim = World->GetSubsystem<UStealthSimulationSubsystem>();
 	if (!Sim)
 	{
-		return;
+		return false;
 	}
 
-	FObjectiveState Obj = Sim->GetObjectiveState();
 	FExtractionState Ext = Sim->GetExtractionState();
 
-	if (!Obj.bCompleted || !Ext.bAvailable)
+	if (!Sim->AreRequiredObjectivesComplete() || !Ext.bAvailable)
 	{
 		UE_LOG(LogStealth, Log, TEXT("Extraction blocked: complete objective first."));
-		return;
+		return false;
 	}
 
 	if (Ext.bUsed)
 	{
-		return;
+		return false;
 	}
 
 	Ext.bUsed = true;
@@ -64,4 +106,5 @@ void AStealthExtractionZone::OnOverlapBegin(UPrimitiveComponent* OverlappedComp,
 
 	UE_LOG(LogStealth, Log, TEXT("Mission complete (%s)."),
 		Outcome == EStealthMissionOutcome::SuccessClean ? TEXT("clean") : TEXT("compromised"));
+	return true;
 }

@@ -319,6 +319,30 @@ struct FExtractionState
 };
 
 USTRUCT(BlueprintType)
+struct FStealthObjectiveRecord
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	FName ObjectiveId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	FText DisplayName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	bool bRequired = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	bool bCompleted = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth", meta = (ClampMin = 0))
+	float CompletedTime = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	TObjectPtr<AActor> SourceActor = nullptr;
+};
+
+USTRUCT(BlueprintType)
 struct FAlarmState
 {
 	GENERATED_BODY()
@@ -331,4 +355,37 @@ struct FAlarmState
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
 	FString Reason;
+};
+
+USTRUCT(BlueprintType)
+struct FStealthHealthState
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	TObjectPtr<AActor> Owner = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	EStealthTeam Team = EStealthTeam::Neutral;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	EStealthVitalState VitalState = EStealthVitalState::Alive;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth", meta = (ClampMin = 0))
+	float CurrentHealth = 100.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth", meta = (ClampMin = 0))
+	float MaxHealth = 100.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth", meta = (ClampMin = 0))
+	float LastDamage = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	EStealthDamageKind LastDamageKind = EStealthDamageKind::Generic;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth", meta = (ClampMin = 0))
+	float LastDamageTime = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stealth")
+	FName LastDamageReason = NAME_None;
 };
