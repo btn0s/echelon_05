@@ -37,16 +37,20 @@ namespace
 	constexpr float PeakDecayPerSecond  = 0.30f;    // visible memory ~3 s before fully draining
 
 	// ── Card geometry — one place to retune the metric cluster ───────────────
-	constexpr float CardW   = 230.f;
-	constexpr float CardH   = 102.f;
-	constexpr float CardGap = SpacingLG;
+	//
+	// Cards are deliberately compact: the readout has to sit close to its header
+	// or the eye treats them as separate widgets. Width is sized so the 28 pt
+	// readout terminates a few pixels off the right edge.
+	constexpr float CardW   = 168.f;
+	constexpr float CardH   = 82.f;
+	constexpr float CardGap = SpacingMD;
 
 	// ── Mission row geometry ─────────────────────────────────────────────────
 	constexpr float MissionIndicatorSize = 11.f;
 	constexpr float MissionRowHeight     = 22.f;
 	constexpr float MissionLabelXOffset  = 22.f;
-	constexpr float MissionStateXOffset  = 66.f;
-	constexpr float MissionUnderlineW    = 130.f;
+	constexpr float MissionStateXOffset  = 60.f;
+	constexpr float MissionUnderlineW    = 110.f;
 
 	// ── Detection banner geometry ────────────────────────────────────────────
 	constexpr float BannerW = 360.f;
@@ -136,33 +140,43 @@ namespace
 	 *   segmented meter + peak tick     (bottom)
 	 *   state label `DARK/PARTIAL/...`  (micro, secondary, right-aligned)
 	 */
+	/**
+	 * VIS technical card — DESIGN.md `### VIS Card`.
+	 *
+	 * Three-row stack:
+	 *   row 1: `VIS` header (left)  ·  state label (right)
+	 *   row 2: readout, right-aligned to the card edge with `%` inline
+	 *   row 3: segmented meter spanning the card width with peak tick
+	 *
+	 * Readout font is one tier below FReadout so it sits inside the card without
+	 * shoving the meter into the bottom edge. Right-aligning to the card edge
+	 * makes the units terminate the card visually.
+	 */
 	void DrawVisCard(FSlateWindowElementList& Out, int32& Layer, const FGeometry& Geo,
 		float X, float Y, float W, float H, float V01, float Peak01)
 	{
-		// Header
+		const FSlateFontInfo Readout = FCoreStyle::GetDefaultFontStyle("Mono", 28);
+
+		// Row 1 — header and state on the same line, opposite sides.
+		const FString State  = VisStateLabel(V01);
+		const float   StateW = MeasureTextWidth(State, FMicro());
 		DrawText(Out, Layer, Geo, TEXT("VIS"), {X, Y}, TextMuted(), FMicro());
+		DrawText(Out, Layer, Geo, State, {X + W - StateW, Y}, TextSecondary(), FMicro());
 
-		// Readout — large numeric, right-aligned to card edge so it visually
-		// terminates the card and so the eye lands on the value first.
-		const FString Value   = FString::Printf(TEXT("%2.0f"), V01 * 100.f);
-		const float   ValueW  = MeasureTextWidth(Value, FReadout());
+		// Row 2 — value and `%` inline, right-aligned to the card edge.
+		const FString Value    = FString::Printf(TEXT("%2.0f"), V01 * 100.f);
+		const float   ValueW   = MeasureTextWidth(Value, Readout);
 		const float   PercentW = MeasureTextWidth(TEXT("%"), FLabel());
+		const float   ValueY   = Y + 14.f;
 		DrawText(Out, Layer, Geo, Value,
-			{X + W - ValueW - PercentW - 4.f, Y - 4.f}, TextPrimary(), FReadout());
-
-		// Compact "%" suffix riding the readout's baseline.
+			{X + W - ValueW - PercentW - 2.f, ValueY}, TextPrimary(), Readout);
 		DrawText(Out, Layer, Geo, TEXT("%"),
-			{X + W - PercentW, Y + 16.f}, TextSecondary(), FLabel());
+			{X + W - PercentW, ValueY + 14.f}, TextSecondary(), FLabel());
 
-		// Segmented meter
-		const float MeterY = Y + H - 22.f;
-		SegmentedMeter(Out, Layer, Geo, X, MeterY, W, 10.f, V01, /*Segments*/ 16, Peak01);
-
-		// State label
-		const FString State = VisStateLabel(V01);
-		const float StateW  = MeasureTextWidth(State, FMicro());
-		DrawText(Out, Layer, Geo, State,
-			{X + W - StateW, MeterY + 12.f}, TextSecondary(), FMicro());
+		// Row 3 — segmented meter
+		const float MeterH = 8.f;
+		const float MeterY = Y + H - MeterH - 2.f;
+		SegmentedMeter(Out, Layer, Geo, X, MeterY, W, MeterH, V01, /*Segments*/ 16, Peak01);
 	}
 
 	/**
@@ -171,27 +185,29 @@ namespace
 	 * Same layout as VIS but the bottom slot is a waveform strip rather than
 	 * a segmented bar. The waveform pulls from the widget-owned circular history.
 	 */
+	/** NSE technical card. Same layout as VIS, waveform replaces segmented meter. */
 	void DrawNoiseCard(FSlateWindowElementList& Out, int32& Layer, const FGeometry& Geo,
 		float X, float Y, float W, float H, float N01, const TArray<float>& History)
 	{
+		const FSlateFontInfo Readout = FCoreStyle::GetDefaultFontStyle("Mono", 28);
+
+		const FString State  = NoiseStateLabel(N01);
+		const float   StateW = MeasureTextWidth(State, FMicro());
 		DrawText(Out, Layer, Geo, TEXT("NSE"), {X, Y}, TextMuted(), FMicro());
+		DrawText(Out, Layer, Geo, State, {X + W - StateW, Y}, TextSecondary(), FMicro());
 
 		const FString Value    = FString::Printf(TEXT("%2.0f"), N01 * 100.f);
-		const float   ValueW   = MeasureTextWidth(Value, FReadout());
+		const float   ValueW   = MeasureTextWidth(Value, Readout);
 		const float   PercentW = MeasureTextWidth(TEXT("%"), FLabel());
+		const float   ValueY   = Y + 14.f;
 		DrawText(Out, Layer, Geo, Value,
-			{X + W - ValueW - PercentW - 4.f, Y - 4.f}, TextPrimary(), FReadout());
-
+			{X + W - ValueW - PercentW - 2.f, ValueY}, TextPrimary(), Readout);
 		DrawText(Out, Layer, Geo, TEXT("%"),
-			{X + W - PercentW, Y + 16.f}, TextSecondary(), FLabel());
+			{X + W - PercentW, ValueY + 14.f}, TextSecondary(), FLabel());
 
-		const float WaveY = Y + H - 28.f;
-		WaveformStrip(Out, Layer, Geo, X, WaveY, W, 16.f, History, LinePrimary());
-
-		const FString State = NoiseStateLabel(N01);
-		const float StateW  = MeasureTextWidth(State, FMicro());
-		DrawText(Out, Layer, Geo, State,
-			{X + W - StateW, WaveY + 18.f}, TextSecondary(), FMicro());
+		const float WaveH = 12.f;
+		const float WaveY = Y + H - WaveH - 2.f;
+		WaveformStrip(Out, Layer, Geo, X, WaveY, W, WaveH, History, LinePrimary());
 	}
 
 	/**
@@ -380,6 +396,11 @@ int32 UStealthHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 		HRule(OutDrawElements, L, AllottedGeometry, MX, MY, MissionUnderlineW);
 		MY += 10.f;
 
+		// Each mission row is structured as [indicator] [LABEL] [STATE].
+		// The indicator sits a hair below the text baseline so the row reads as
+		// `■  OBJ  ACTIVE` aligned, not `■ OBJ ACTIVE` with the square floating.
+		const float IndicatorYOffset = 3.f;
+
 		// OBJ row
 		{
 			const int32 Required  = Sim->GetRequiredObjectiveCount();
@@ -389,10 +410,11 @@ int32 UStealthHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 
 			const FString State = Required > 1
 				? FString::Printf(TEXT("%d/%d"), Completed, Required)
-				: (bDone ? TEXT("OBJ COMPLETE") : TEXT("OBJ ACTIVE"));
+				: (bDone ? TEXT("COMPLETE") : TEXT("ACTIVE"));
 
 			IndicatorSquare(OutDrawElements, L, AllottedGeometry,
-				MX, MY + 1.f, MissionIndicatorSize, bDone || bFlashing, bFlashing ? 1.f : 0.95f);
+				MX, MY + IndicatorYOffset, MissionIndicatorSize, bDone || bFlashing,
+				bFlashing ? 1.f : 0.95f);
 			DrawText(OutDrawElements, L, AllottedGeometry, TEXT("OBJ"),
 				{MX + MissionLabelXOffset, MY}, TextMuted(), FMicro());
 			DrawText(OutDrawElements, L, AllottedGeometry, State,
@@ -407,17 +429,16 @@ int32 UStealthHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 			const bool  bUsed     = Ext.bUsed;
 			const bool  bActive   = bAvail && !bUsed;
 			const bool  bFlashing = (T - ExtFlashAtTime) < 0.18f;
-			const FString State = bUsed ? TEXT("EXT USED") : (bAvail ? TEXT("EXT AVAIL") : TEXT("EXT LOCKED"));
+			const FString State = bUsed ? TEXT("USED") : (bAvail ? TEXT("AVAIL") : TEXT("LOCKED"));
 
 			IndicatorSquare(OutDrawElements, L, AllottedGeometry,
-				MX, MY + 1.f, MissionIndicatorSize, bActive || bUsed || bFlashing,
+				MX, MY + IndicatorYOffset, MissionIndicatorSize, bActive || bUsed || bFlashing,
 				bFlashing ? 1.f : (bActive ? 0.95f : 0.7f));
 			DrawText(OutDrawElements, L, AllottedGeometry, TEXT("EXT"),
 				{MX + MissionLabelXOffset, MY}, TextMuted(), FMicro());
 			DrawText(OutDrawElements, L, AllottedGeometry, State,
 				{MX + MissionStateXOffset, MY},
-				bActive ? TextPrimary() : (bUsed ? TextSecondary() : TextSecondary()),
-				FLabel());
+				bActive ? TextPrimary() : TextSecondary(), FLabel());
 			MY += MissionRowHeight;
 		}
 
@@ -426,11 +447,12 @@ int32 UStealthHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 		{
 			const bool bAlive = HP.VitalState == EStealthVitalState::Alive;
 			const FString State = bAlive
-				? FString::Printf(TEXT("HP %2.0f/%2.0f"), HP.CurrentHealth, HP.MaxHealth)
-				: FString::Printf(TEXT("HP %s"), *EnumDisplay(HP.VitalState));
+				? FString::Printf(TEXT("%2.0f / %2.0f"), HP.CurrentHealth, HP.MaxHealth)
+				: EnumDisplay(HP.VitalState);
 
 			IndicatorSquare(OutDrawElements, L, AllottedGeometry,
-				MX, MY + 1.f, MissionIndicatorSize, !bAlive, bAlive ? 0.95f : 1.f);
+				MX, MY + IndicatorYOffset, MissionIndicatorSize, !bAlive,
+				bAlive ? 0.95f : 1.f);
 			DrawText(OutDrawElements, L, AllottedGeometry, TEXT("HP"),
 				{MX + MissionLabelXOffset, MY}, TextMuted(), FMicro());
 			DrawText(OutDrawElements, L, AllottedGeometry, State,
@@ -444,7 +466,7 @@ int32 UStealthHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 		{
 			const float Pulse = 0.55f + 0.30f * FMath::Sin(T * 2.5f);
 			IndicatorSquare(OutDrawElements, L, AllottedGeometry,
-				MX, MY + 1.f, MissionIndicatorSize, false, Pulse);
+				MX, MY + IndicatorYOffset, MissionIndicatorSize, false, Pulse);
 			DrawText(OutDrawElements, L, AllottedGeometry, TEXT("COMPROMISED"),
 				{MX + MissionLabelXOffset, MY}, TextPrimary(), FLabel());
 		}
@@ -494,17 +516,12 @@ int32 UStealthHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 	{
 		const float TotalW = CardW * 2.f + CardGap;
 		const float CX     = ScreenW - TotalW - ScreenMargin;
-		const float CY     = ScreenH - CardH - ScreenMargin - 18.f;
+		const float CY     = ScreenH - CardH - ScreenMargin;
 
 		DrawVisCard(OutDrawElements, L, AllottedGeometry,
 			CX, CY, CardW, CardH, Vis01, PeakVis01);
 		DrawNoiseCard(OutDrawElements, L, AllottedGeometry,
 			CX + CardW + CardGap, CY, CardW, CardH, Noise01, NoiseHistory);
-
-		// Section header riding above the pair — names the instrument cluster.
-		DrawText(OutDrawElements, L, AllottedGeometry, TEXT("EXPOSURE"),
-			{CX, CY - 20.f}, TextMuted(), FMicro());
-		HRule(OutDrawElements, L, AllottedGeometry, CX + 80.f, CY - 13.f, TotalW - 80.f);
 	}
 
 	// ── 7. Diagnostics overlay (right side, gated by stealth.DebugDraw) ──────
