@@ -6,6 +6,8 @@
 
 class UStealthGuardBrainComponent;
 class UAnimInstance;
+class USkeletalMesh;
+class USkeletalMeshComponent;
 
 /** ALS-backed stealth guard: presentation via ALS; stealth logic on GuardBrain; AI movement via BT + StealthAls AI controller. */
 UCLASS()
@@ -32,6 +34,12 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stealth|Presentation")
 	TSubclassOf<UAnimInstance> RifleOverlayAnimationClass;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stealth|Presentation")
+	TObjectPtr<USkeletalMeshComponent> OverlaySkeletalMeshComponent;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stealth|Presentation")
+	TObjectPtr<USkeletalMesh> RifleOverlaySkeletalMesh;
 
 protected:
 	void ApplyAlsLocomotionPresentation();

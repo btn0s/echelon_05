@@ -6,6 +6,7 @@
 
 #include "Animation/AnimInstance.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
 #include "Settings/AlsCharacterSettings.h"
 #include "Settings/AlsMovementSettings.h"
 #include "UObject/ConstructorHelpers.h"
@@ -18,6 +19,13 @@ AStealthAlsGuard::AStealthAlsGuard(const FObjectInitializer& ObjectInitializer)
 	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	GuardBrain = CreateDefaultSubobject<UStealthGuardBrainComponent>(TEXT("GuardBrain"));
+
+	OverlaySkeletalMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("OverlaySkeletalMesh"));
+	OverlaySkeletalMeshComponent->SetupAttachment(GetMesh(), TEXT("Rifle"));
+	OverlaySkeletalMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	OverlaySkeletalMeshComponent->SetGenerateOverlapEvents(false);
+	OverlaySkeletalMeshComponent->bUseAttachParentBound = true;
+	OverlaySkeletalMeshComponent->PrimaryComponentTick.bCanEverTick = false;
 
 	AIControllerClass = AStealthAlsAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
@@ -51,6 +59,14 @@ AStealthAlsGuard::AStealthAlsGuard(const FObjectInitializer& ObjectInitializer)
 	{
 		RifleOverlayAnimationClass = RifleOverlayAnimationClassFinder.Class;
 	}
+
+	static ConstructorHelpers::FObjectFinder<USkeletalMesh> RifleOverlaySkeletalMeshFinder(
+		TEXT("/ALS/ALS/OverlayObjects/Rifle/SKM_Als_Rifle.SKM_Als_Rifle"));
+	if (RifleOverlaySkeletalMeshFinder.Succeeded())
+	{
+		RifleOverlaySkeletalMesh = RifleOverlaySkeletalMeshFinder.Object;
+		OverlaySkeletalMeshComponent->SetSkeletalMesh(RifleOverlaySkeletalMesh);
+	}
 }
 
 void AStealthAlsGuard::BeginPlay()
@@ -58,6 +74,15 @@ void AStealthAlsGuard::BeginPlay()
 	Super::BeginPlay();
 
 	SetActorTickEnabled(true);
+	SetOverlayMode(AlsOverlayModeTags::Rifle);
+	if (OverlaySkeletalMeshComponent)
+	{
+		OverlaySkeletalMeshComponent->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale,
+			TEXT("Rifle"));
+		OverlaySkeletalMeshComponent->SetSkeletalMesh(RifleOverlaySkeletalMesh);
+		OverlaySkeletalMeshComponent->SetHiddenInGame(false);
+		OverlaySkeletalMeshComponent->SetVisibility(true, true);
+	}
 	RefreshOverlayAnimationLayer();
 }
 
@@ -114,7 +139,7 @@ void AStealthAlsGuard::ApplyAlsLocomotionPresentation()
 	const bool bMoving = Speed2D > 10.f;
 	const bool bChasing = ActiveBrain->Brain.Mode == EGuardBrainMode::Chase;
 
-	SetOverlayMode(bChasing ? AlsOverlayModeTags::Rifle : AlsOverlayModeTags::Default);
+	SetOverlayMode(AlsOverlayModeTags::Rifle);
 	SetDesiredAiming(bChasing);
 	SetDesiredRotationMode(bChasing
 		? AlsRotationModeTags::Aiming
